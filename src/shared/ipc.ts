@@ -25,6 +25,7 @@ export const IPC = {
   projectList: 'project:list',
   projectSave: 'project:save',
   projectDelete: 'project:delete',
+  projectDuplicate: 'project:duplicate',
   projectImport: 'project:import',
   projectSetSource: 'project:set-source',
   pickSourceFile: 'project:pick-source',
@@ -78,7 +79,8 @@ export const IPC = {
 
   // Renderer-bound events
   projectEvent: 'project:event',
-  menuCheckUpdates: 'menu:check-updates'
+  menuCheckUpdates: 'menu:check-updates',
+  menuCommand: 'menu:command'
 } as const
 
 export interface ZirtolaApi {
@@ -111,6 +113,10 @@ export interface ZirtolaApi {
   openProject(id: string): Promise<Project>
   listProjects(): Promise<ProjectSummary[]>
   deleteProject(id: string): Promise<void>
+  /** Explicitly persist a project (menu Save). */
+  saveProject(id: string): Promise<Project>
+  /** Duplicate a project's edit state into a new project (menu Save As). */
+  duplicateProject(id: string): Promise<Project>
 
   // Pipeline
   runPipeline(projectId: string): Promise<void>
@@ -159,4 +165,6 @@ export interface ZirtolaApi {
   onProjectEvent(cb: (project: Project) => void): () => void
   /** Fired when the user picks Help → Check for Updates in the app menu. */
   onMenuCheckUpdates(cb: () => void): () => void
+  /** Fired for File-menu commands (new/open/import/save/etc.). */
+  onMenuCommand(cb: (payload: { command: string; projectId?: string }) => void): () => void
 }

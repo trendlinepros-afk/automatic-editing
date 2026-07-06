@@ -8,6 +8,7 @@ import path from 'path'
 import { IPC } from '@shared/ipc'
 import type { AppSettings, EDL, GraphicEvent, StageId, TimeRegion } from '@shared/types'
 import * as projects from './project'
+import { buildAppMenu } from './menu'
 import { ensureLayout, masterDir } from './storage'
 import { getSettingsStore, type SecretName } from './settings'
 import { renderQueue, enqueueAndWait } from './queue'
@@ -50,9 +51,17 @@ export function registerIpc(): void {
     return res.canceled ? null : res.filePaths[0]
   })
 
-  ipcMain.handle(IPC.projectCreate, (_e, name: string, sourcePath?: string) => projects.createProject(name, sourcePath))
+  ipcMain.handle(IPC.projectCreate, async (_e, name: string, sourcePath?: string) => {
+    const p = await projects.createProject(name, sourcePath)
+    buildAppMenu() // refresh Open Recent
+    return p
+  })
   ipcMain.handle(IPC.projectSetSource, (_e, id: string, sourcePath: string) => projects.setProjectSource(id, sourcePath))
-  ipcMain.handle(IPC.projectImport, (_e, filePath: string) => projects.importProjectFromFile(filePath))
+  ipcMain.handle(IPC.projectImport, (_e, filePath: string) => {
+    const p = projects.importProjectFromFile(filePath)
+    buildAppMenu()
+    return p
+  })
 
   // -- Media pool ----------------------------------------------------------
   ipcMain.handle(IPC.mediaImport, (_e, projectId: string, paths: string[]) => projects.addProjectMedia(projectId, paths))
@@ -84,7 +93,16 @@ export function registerIpc(): void {
   })
   ipcMain.handle(IPC.projectOpen, (_e, id: string) => projects.openProject(id))
   ipcMain.handle(IPC.projectList, () => projects.listProjects())
-  ipcMain.handle(IPC.projectDelete, (_e, id: string) => projects.deleteProject(id))
+  ipcMain.handle(IPC.projectDelete, (_e, id: string) => {
+    projects.deleteProject(id)
+    buildAppMenu()
+  })
+  ipcMain.handle(IPC.projectSave, (_e, id: string) => projects.saveProject(projects.openProject(id)))
+  ipcMain.handle(IPC.projectDuplicate, (_e, id: string) => {
+    const p = projects.duplicateProject(id)
+    buildAppMenu()
+    return p
+  })
 
   // -- Pipeline ------------------------------------------------------------
   ipcMain.handle(IPC.pipelineRun, async (_e, projectId: string) => {

@@ -12,6 +12,7 @@ export default function App() {
   const { view, setView, project, settings, closeProject, refreshProjects, refreshSettings, refreshJobs, upsertJob, applyProjectPush } =
     useStore()
   const [showUpdate, setShowUpdate] = useState(false)
+  const [flash, setFlash] = useState<string | null>(null)
 
   useEffect(() => {
     refreshProjects()
@@ -20,10 +21,12 @@ export default function App() {
     const offQueue = window.zirtola.onQueueEvent(upsertJob)
     const offProject = window.zirtola.onProjectEvent(applyProjectPush)
     const offMenu = window.zirtola.onMenuCheckUpdates(() => setShowUpdate(true))
+    const offCmd = window.zirtola.onMenuCommand((p) => handleMenuCommand(p, setFlash))
     return () => {
       offQueue()
       offProject()
       offMenu()
+      offCmd()
     }
   }, [])
 
@@ -125,8 +128,73 @@ export default function App() {
         <RenderQueuePanel />
       </main>
       {updateModal}
+      {flash && (
+        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 panel bg-ink-800 px-4 py-2 text-sm text-ink-100 shadow-xl">
+          {flash}
+        </div>
+      )}
     </div>
   )
+}
+
+/** Dispatch File-menu commands. Reads fresh store state (the subscription is
+ *  registered once), so it never closes over stale project/view. */
+async function handleMenuCommand(
+  { command, projectId }: { command: string; projectId?: string },
+  setFlash: (msg: string | null) => void
+): Promise<void> {
+  const flash = (msg: string) => {
+    setFlash(msg)
+    window.setTimeout(() => setFlash(null), 2200)
+  }
+  const s = () => useStore.getState()
+  try {
+    switch (command) {
+      case 'new-project':
+        s().closeProject()
+        s().setView('library')
+        s().requestNewProject()
+        break
+      case 'open-project': {
+        const fp = await window.zirtola.pickProjectFile()
+        if (!fp) return
+        const p = await window.zirtola.importProject(fp)
+        await s().refreshProjects()
+        await s().openProject(p.id)
+        break
+      }
+      case 'open-project-id':
+        if (projectId) await s().openProject(projectId)
+        break
+      case 'import': {
+        const cur = s().project
+        if (!cur) return flash('Open a project first to import media.')
+        const paths = await window.zirtola.pickMediaFiles()
+        if (!paths.length) return
+        s().applyProjectPush(await window.zirtola.importMedia(cur.id, paths))
+        s().setView('media')
+        break
+      }
+      case 'save': {
+        const cur = s().project
+        if (!cur) return flash('No project open to save.')
+        await window.zirtola.saveProject(cur.id)
+        flash('Saved ✓')
+        break
+      }
+      case 'save-as': {
+        const cur = s().project
+        if (!cur) return flash('No project open to copy.')
+        const copy = await window.zirtola.duplicateProject(cur.id)
+        await s().refreshProjects()
+        await s().openProject(copy.id)
+        flash(`Saved as "${copy.name}"`)
+        break
+      }
+    }
+  } catch (err: any) {
+    flash(err?.message ?? 'That action failed.')
+  }
 }
 
 function navCls(active: boolean): string {

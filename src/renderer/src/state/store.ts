@@ -33,6 +33,10 @@ interface Store {
 
   projects: ProjectSummary[]
   refreshProjects: () => Promise<void>
+  /** Set by the File → New Project menu; LibraryView opens its dialog when true. */
+  newProjectRequested: boolean
+  requestNewProject: () => void
+  clearNewProjectRequest: () => void
 
   project: Project | null
   openProject: (id: string) => Promise<void>
@@ -110,6 +114,9 @@ export const useStore = create<Store>((set, get) => {
 
     projects: [],
     refreshProjects: async () => set({ projects: await window.zirtola.listProjects() }),
+    newProjectRequested: false,
+    requestNewProject: () => set({ newProjectRequested: true }),
+    clearNewProjectRequest: () => set({ newProjectRequested: false }),
 
     project: null,
     openProject: async (id) => {

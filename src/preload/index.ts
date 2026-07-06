@@ -24,6 +24,8 @@ const api: ZirtolaApi = {
   openProject: (id) => ipcRenderer.invoke(IPC.projectOpen, id),
   listProjects: () => ipcRenderer.invoke(IPC.projectList),
   deleteProject: (id) => ipcRenderer.invoke(IPC.projectDelete, id),
+  saveProject: (id) => ipcRenderer.invoke(IPC.projectSave, id),
+  duplicateProject: (id) => ipcRenderer.invoke(IPC.projectDuplicate, id),
 
   runPipeline: (projectId) => ipcRenderer.invoke(IPC.pipelineRun, projectId),
   runStage: (projectId, stage, region) => ipcRenderer.invoke(IPC.pipelineRunStage, projectId, stage, region),
@@ -69,6 +71,12 @@ const api: ZirtolaApi = {
     const listener = () => cb()
     ipcRenderer.on(IPC.menuCheckUpdates, listener)
     return () => ipcRenderer.removeListener(IPC.menuCheckUpdates, listener)
+  },
+
+  onMenuCommand: (cb) => {
+    const listener = (_e: unknown, payload: { command: string; projectId?: string }) => cb(payload)
+    ipcRenderer.on(IPC.menuCommand, listener)
+    return () => ipcRenderer.removeListener(IPC.menuCommand, listener)
   }
 }
 

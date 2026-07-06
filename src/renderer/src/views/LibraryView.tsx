@@ -1,12 +1,21 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useStore, formatTime } from '../state/store'
 import NewProjectModal from '../components/NewProjectModal'
 
 export default function LibraryView() {
-  const { projects, settings, refreshProjects, openProject, completeOnboarding } = useStore()
+  const { projects, settings, refreshProjects, openProject, completeOnboarding, newProjectRequested, clearNewProjectRequest } =
+    useStore()
   const [busy, setBusy] = useState<null | 'create' | 'open' | 'folder'>(null)
   const [error, setError] = useState<string | null>(null)
   const [naming, setNaming] = useState(false)
+
+  // File → New Project (menu) opens the name dialog here.
+  useEffect(() => {
+    if (newProjectRequested) {
+      setNaming(true)
+      clearNewProjectRequest()
+    }
+  }, [newProjectRequested])
 
   // Create a new project from a name — makes a fresh folder inside
   // <master>/Projects and opens the editor, where footage is attached.

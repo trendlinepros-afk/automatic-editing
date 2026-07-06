@@ -186,6 +186,38 @@ export async function setProjectSource(id: string, sourcePath: string, opts?: { 
   return project
 }
 
+/**
+ * "Save As a Copy" — duplicate a project's edit state into a new project folder.
+ * The edit decisions (EDL), media pool, source, and transcript are preserved;
+ * rendered intermediates are NOT copied (they re-render on demand), so this is
+ * cheap even for large projects.
+ */
+export function duplicateProject(id: string, newName?: string): Project {
+  const src = openProject(id)
+  const name = newName?.trim() || `${src.name} (copy)`
+  const copyId = newId('proj')
+  const workDir = projectFolder(projectsRoot(), name)
+  fs.mkdirSync(workDir, { recursive: true })
+
+  const copy: Project = {
+    ...structuredClone(src),
+    id: copyId,
+    name,
+    workDir,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    approved: false,
+    previewPath: undefined,
+    finalPath: undefined,
+    // Re-render on demand; the EDL keeps every edit decision so a pipeline run
+    // reproduces the edit without redoing transcription (kept above).
+    stages: freshStages()
+  }
+  live.set(copyId, copy)
+  saveProject(copy)
+  return copy
+}
+
 export function saveProject(project: Project): Project {
   project.updatedAt = new Date().toISOString()
   const file = path.join(project.workDir, 'project.json')
