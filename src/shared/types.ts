@@ -330,15 +330,7 @@ export interface HostingSettings {
 // Render queue
 // ---------------------------------------------------------------------------
 
-export type JobKind =
-  | 'probe'
-  | 'transcribe'
-  | 'stage-run'
-  | 'hyperframes-render'
-  | 'preview-export'
-  | 'final-export'
-  | 'upload'
-  | 'opusclip-submit'
+export type JobKind = 'probe' | 'stage-run' | 'final-export' | 'opusclip-submit'
 
 export interface RenderJob {
   id: string

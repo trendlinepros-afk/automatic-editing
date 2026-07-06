@@ -4,7 +4,7 @@ module.exports = {
   theme: {
     extend: {
       colors: {
-        // WickedCut editor palette — deep slate surfaces, one signal accent.
+        // Zirtola editor palette — deep slate surfaces, one signal accent.
         ink: {
           950: '#0b0d10', // app background
           900: '#111418', // panel background
@@ -14,6 +14,7 @@ module.exports = {
           600: '#39424e', // muted borders
           500: '#55606e', // disabled text
           400: '#8b96a5', // secondary text
+          300: '#aab4c0', // emphasized secondary text (labels)
           200: '#ccd4de', // body text
           50: '#f2f5f8' // headings
         },

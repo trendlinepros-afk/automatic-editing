@@ -15,7 +15,6 @@ import type { Project, ProjectSummary } from '@shared/types'
 type Sqlite = import('better-sqlite3').Database
 
 let db: Sqlite | null = null
-let jsonFallback = false
 
 export function initDb(): void {
   try {
@@ -37,7 +36,8 @@ export function initDb(): void {
       );
     `)
   } catch (err) {
-    jsonFallback = true
+    // Native module unavailable → degrade to JSON-only persistence (guarded by
+    // `if (db)` everywhere below).
     console.warn('[db] better-sqlite3 unavailable, falling back to JSON-only persistence:', err)
   }
 }

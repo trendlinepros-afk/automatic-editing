@@ -28,6 +28,8 @@ interface Selection {
 interface Store {
   view: View
   setView: (v: View) => void
+  /** The view active before navigating to Settings, so Back can return to it. */
+  viewBeforeSettings: View
 
   projects: ProjectSummary[]
   refreshProjects: () => Promise<void>
@@ -99,7 +101,12 @@ export const useStore = create<Store>((set, get) => {
 
   return {
     view: 'library',
-    setView: (view) => set({ view }),
+    viewBeforeSettings: 'library',
+    setView: (view) =>
+      set((s) => ({
+        view,
+        viewBeforeSettings: view === 'settings' && s.view !== 'settings' ? s.view : s.viewBeforeSettings
+      })),
 
     projects: [],
     refreshProjects: async () => set({ projects: await window.zirtola.listProjects() }),
@@ -107,7 +114,15 @@ export const useStore = create<Store>((set, get) => {
     project: null,
     openProject: async (id) => {
       const project = await window.zirtola.openProject(id)
-      set({ project, view: 'editor', past: [], future: [], selection: { region: null, segmentIds: [] } })
+      set({
+        project,
+        view: 'editor',
+        past: [],
+        future: [],
+        currentTime: 0,
+        seekRequest: null,
+        selection: { region: null, segmentIds: [] }
+      })
     },
     closeProject: () => set({ project: null, view: 'library', past: [], future: [] }),
     applyProjectPush: (p) => {

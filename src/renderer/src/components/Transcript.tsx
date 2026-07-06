@@ -60,7 +60,7 @@ export default function Transcript() {
   const srcTime = trimmedToSourceTime(currentTime, keep)
 
   return (
-    <div className="panel flex-1 min-h-0 overflow-y-auto p-3 leading-relaxed">
+    <div className="panel flex-1 min-h-0 overflow-y-auto p-3 leading-relaxed select-text">
       <div className="flex items-center justify-between mb-2 text-xs text-ink-400 sticky top-0 bg-ink-900 pb-1">
         <span className="font-display font-semibold text-ink-200">Transcript</span>
         <span>

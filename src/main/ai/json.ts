@@ -29,8 +29,3 @@ export function extractJson<T>(raw: string, guard: (v: unknown) => v is T): T {
 
 export const isObject = (v: unknown): v is Record<string, unknown> =>
   typeof v === 'object' && v !== null && !Array.isArray(v)
-
-export const isArrayOf =
-  <T>(item: (v: unknown) => v is T) =>
-  (v: unknown): v is T[] =>
-    Array.isArray(v) && v.every(item)

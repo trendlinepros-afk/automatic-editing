@@ -109,6 +109,9 @@ class RenderQueue extends EventEmitter {
 }
 
 export const renderQueue = new RenderQueue()
+// enqueueAndWait attaches a short-lived per-call listener; a few can stack up
+// during chained stage runs. Lift the default-10 cap to avoid a false warning.
+renderQueue.setMaxListeners(50)
 
 /** Enqueue and resolve when the job finishes (done), reject on error/cancel. */
 export function enqueueAndWait(

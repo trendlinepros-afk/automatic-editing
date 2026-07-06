@@ -50,7 +50,3 @@ export function trimmedToSourceTime(t: number, keep: TimeRegion[]): number {
   return keep.length > 0 ? keep[keep.length - 1].end : t
 }
 
-/** Convert a SOURCE region to a TRIMMED region. */
-export function sourceRegionToTrimmed(r: TimeRegion, keep: TimeRegion[]): TimeRegion {
-  return { start: sourceToTrimmedTime(r.start, keep), end: sourceToTrimmedTime(r.end, keep) }
-}

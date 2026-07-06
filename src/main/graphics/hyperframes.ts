@@ -8,12 +8,30 @@
  * rendering a still of the HTML via ffmpeg-less placeholder generation so the
  * pipeline still completes — clearly marked as a placeholder.
  */
-import { spawn } from 'child_process'
+import { spawn, exec, type ChildProcess } from 'child_process'
 import fs from 'fs'
 import path from 'path'
 import { runFFmpeg } from '../media/ffmpeg'
 import { TEMPLATE_LIBRARY } from './templates'
 import type { BrandKit, GraphicEvent } from '@shared/types'
+
+/**
+ * Kill the child AND its descendants. Under `shell: true` the direct child is
+ * a shell whose SIGKILL wouldn't reach the real hyperframes/Chrome grandchild,
+ * leaking a render on cancel — so tree-kill via taskkill on Windows.
+ */
+function killTree(child: ChildProcess): void {
+  if (!child.pid) return
+  if (process.platform === 'win32') {
+    exec(`taskkill /pid ${child.pid} /T /F`, () => {})
+  } else {
+    try {
+      child.kill('SIGKILL')
+    } catch {
+      /* already gone */
+    }
+  }
+}
 
 let cliAvailable: boolean | null = null
 
@@ -81,7 +99,7 @@ export async function renderGraphic(
         shell: true
       })
       let stderr = ''
-      const onAbort = () => child.kill('SIGKILL')
+      const onAbort = () => killTree(child)
       signal?.addEventListener('abort', onAbort, { once: true })
       child.stderr.on('data', (d) => (stderr += d.toString()))
       child.on('error', (e) => reject(new Error(`HyperFrames failed to start: ${e.message}`)))

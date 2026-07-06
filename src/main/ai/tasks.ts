@@ -130,6 +130,7 @@ export async function fillSlots(
   signal?: AbortSignal
 ): Promise<Record<string, string>> {
   const template = TEMPLATE_LIBRARY[templateId]
+  if (!template) throw new Error(`Unknown graphic template "${templateId}".`)
   const raw = await runTask(
     'graphic-slot-filling',
     {

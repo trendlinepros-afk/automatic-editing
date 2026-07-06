@@ -7,14 +7,22 @@ import url from 'url'
 import { registerIpc } from './ipc'
 import { initDb } from './db'
 import { getSettingsStore } from './settings'
-import { checkForUpdates } from './updater'
-import { IPC } from '@shared/ipc'
 
 // Register a privileged scheme so the renderer can play files from project
 // work dirs (preview.mp4 etc.) without disabling webSecurity.
 protocol.registerSchemesAsPrivileged([
   { scheme: 'wcmedia', privileges: { stream: true, supportFetchAPI: true, bypassCSP: true } }
 ])
+
+/** Canonical roots the wcmedia:// scheme is allowed to read from — the app's
+ *  user-data dir and the configured projects folder. Anything else is denied
+ *  so the scheme can never be used to read arbitrary files off disk. */
+function mediaRoots(): string[] {
+  const roots = [path.resolve(app.getPath('userData'))]
+  const dir = getSettingsStore().getSettings().projectsDir
+  if (dir) roots.push(path.resolve(dir))
+  return roots
+}
 
 function createWindow(): BrowserWindow {
   const win = new BrowserWindow({
@@ -46,12 +54,9 @@ function createWindow(): BrowserWindow {
   return win
 }
 
-function buildMenu(win: BrowserWindow): void {
+function buildMenu(): void {
   const menu = Menu.buildFromTemplate([
-    {
-      label: 'File',
-      submenu: [{ role: 'quit' }]
-    },
+    { label: 'File', submenu: [{ role: 'quit' }] },
     {
       label: 'Edit',
       submenu: [
@@ -66,52 +71,53 @@ function buildMenu(win: BrowserWindow): void {
     {
       label: 'View',
       submenu: [{ role: 'reload' }, { role: 'toggleDevTools' }, { type: 'separator' }, { role: 'togglefullscreen' }]
-    },
-    {
-      label: 'Help',
-      submenu: [
-        {
-          label: 'Check for Updates…',
-          click: async () => {
-            // Reuse the queue panel for visible feedback: running → result.
-            const send = (status: 'running' | 'done' | 'error', label: string) =>
-              win.webContents.send(IPC.queueEvent, {
-                id: 'update-check',
-                kind: 'probe',
-                label,
-                projectId: '',
-                status,
-                progress: status === 'running' ? -1 : 1,
-                createdAt: new Date().toISOString()
-              })
-            send('running', 'Checking for updates…')
-            const result = await checkForUpdates()
-            send(result.status === 'error' ? 'error' : 'done', result.message)
-          }
-        }
-      ]
     }
+    // Updates live in Settings → Updates (with the install buttons); no menu
+    // entry, to avoid a dead-end that can't offer the install action.
   ])
   Menu.setApplicationMenu(menu)
 }
 
-app.whenReady().then(() => {
-  // wcmedia://<absolute-path> → stream local file to the <video> element.
-  protocol.handle('wcmedia', (request) => {
-    const filePath = decodeURIComponent(request.url.replace('wcmedia://', ''))
-    return net.fetch(url.pathToFileURL(filePath).toString())
+// Single-instance lock: a second launch would write the same SQLite DB and
+// project files concurrently and corrupt them. Focus the existing window.
+const gotLock = app.requestSingleInstanceLock()
+if (!gotLock) {
+  app.quit()
+} else {
+  app.on('second-instance', () => {
+    const win = BrowserWindow.getAllWindows()[0]
+    if (win) {
+      if (win.isMinimized()) win.restore()
+      win.focus()
+    }
   })
 
-  initDb()
-  getSettingsStore()
-  registerIpc()
-  const win = createWindow()
-  buildMenu(win)
+  app.whenReady().then(() => {
+    // wcmedia://<absolute-path> → stream a local file to the <video> element,
+    // confined to the app's own media roots (never arbitrary disk paths).
+    protocol.handle('wcmedia', (request) => {
+      try {
+        const decoded = decodeURIComponent(request.url.slice('wcmedia://'.length))
+        const resolved = path.resolve(decoded)
+        const allowed = mediaRoots().some((r) => resolved === r || resolved.startsWith(r + path.sep))
+        if (!allowed) return new Response('Forbidden', { status: 403 })
+        return net.fetch(url.pathToFileURL(resolved).toString())
+      } catch {
+        return new Response('Bad request', { status: 400 })
+      }
+    })
 
-  app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow()
+    initDb()
+    getSettingsStore()
+    registerIpc()
+    createWindow()
+    buildMenu()
+
+    app.on('activate', () => {
+      if (BrowserWindow.getAllWindows().length === 0) createWindow()
+    })
   })
-})
+}
 
 app.on('window-all-closed', () => {
   app.quit()

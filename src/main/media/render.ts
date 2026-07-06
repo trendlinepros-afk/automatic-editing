@@ -6,8 +6,14 @@
 import path from 'path'
 import fs from 'fs'
 import { runFFmpeg, hasNvenc, type RunOptions } from './ffmpeg'
+import { getSettingsStore } from '../settings'
 import { cutsToKeepSegments, sourceToTrimmedTime } from '@shared/timemap'
 import type { ExportPreset, Project, TimeRegion } from '@shared/types'
+
+/** NVENC is used only when available AND the user's preference allows it. */
+async function useNvenc(): Promise<boolean> {
+  return getSettingsStore().getSettings().export.preferNvenc && (await hasNvenc())
+}
 
 // ---------------------------------------------------------------------------
 // Stage 2 output — apply validated cuts → trimmed.mp4
@@ -22,19 +28,18 @@ export async function applyCuts(
   if (keep.length === 0) throw new Error('Cut list removes the entire video — nothing left to keep.')
 
   // Build a select/aselect filter over keep segments; re-encodes once, keeps
-  // A/V in sync, avoids N intermediate files.
+  // A/V in sync, avoids N intermediate files. Sources with no audio stream
+  // must NOT get an -af/-c:a (ffmpeg errors on a missing audio input).
   const expr = keep.map((k) => `between(t,${k.start.toFixed(3)},${k.end.toFixed(3)})`).join('+')
-  await runFFmpeg(
-    [
-      '-i', project.source.path,
-      '-vf', `select='${expr}',setpts=N/FRAME_RATE/TB`,
-      '-af', `aselect='${expr}',asetpts=N/SR/TB`,
-      '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '16',
-      '-c:a', 'aac', '-b:a', '192k',
-      outPath
-    ],
-    { ...opts, totalSec: keep.reduce((a, k) => a + (k.end - k.start), 0) }
-  )
+  const args = [
+    '-i', project.source.path,
+    '-vf', `select='${expr}',setpts=N/FRAME_RATE/TB`,
+    ...(project.source.hasAudio ? ['-af', `aselect='${expr}',asetpts=N/SR/TB`] : []),
+    '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '16',
+    ...(project.source.hasAudio ? ['-c:a', 'aac', '-b:a', '192k'] : ['-an']),
+    outPath
+  ]
+  await runFFmpeg(args, { ...opts, totalSec: keep.reduce((a, k) => a + (k.end - k.start), 0) })
   return { outPath, keep }
 }
 
@@ -163,24 +168,31 @@ export async function mixAudio(
   speechRegions: TimeRegion[],
   opts: RunOptions
 ): Promise<string> {
-  // EDL stores music/SFX in SOURCE time; convert regions to trimmed time.
-  const music = project.edl.music.map((m) => ({
-    ...m,
-    region: {
-      start: sourceToTrimmedTime(m.region.start, keep),
-      end: sourceToTrimmedTime(m.region.end, keep)
-    }
-  }))
+  // EDL stores music/SFX in SOURCE time; convert to trimmed time and drop cues
+  // that collapsed to zero length (region fully inside a cut).
+  const AFMT = 'aformat=sample_rates=48000:channel_layouts=stereo'
+  const music = project.edl.music
+    .map((m) => ({
+      ...m,
+      region: {
+        start: sourceToTrimmedTime(m.region.start, keep),
+        end: sourceToTrimmedTime(m.region.end, keep)
+      }
+    }))
+    .filter((m) => m.region.end - m.region.start > 0.05)
   const sfx = project.edl.sfx.map((s) => ({ ...s, at: sourceToTrimmedTime(s.at, keep) }))
   const outPath = path.join(project.workDir, 'mixed.mp4')
-  if (music.length === 0 && sfx.length === 0) {
+  if ((music.length === 0 && sfx.length === 0) || !project.source.hasAudio) {
+    // Nothing to mix (or the base has no audio to mix onto) — pass through.
     fs.copyFileSync(inPath, outPath)
     return outPath
   }
 
   const inputs: string[] = ['-i', inPath]
-  const chains: string[] = []
-  const mixLabels: string[] = ['[0:a]']
+  // Normalize every mix input to the same rate/layout so amix negotiates
+  // cleanly regardless of the source assets' formats.
+  const chains: string[] = [`[0:a]${AFMT}[base]`]
+  const mixLabels: string[] = ['[base]']
   let inputIdx = 1
 
   for (const cue of music) {
@@ -192,12 +204,12 @@ export async function mixAudio(
     const duckGain = duckExpr
       ? `volume=volume='if(${duckExpr},${dbToLinear(cue.gainDb + cue.duckDb)},${dbToLinear(cue.gainDb)})':eval=frame`
       : `volume=${dbToLinear(cue.gainDb)}`
-    // Order matters: trim + fade in CUE-LOCAL time first, THEN delay into
-    // place, THEN duck (duck expressions are in output-timeline time).
+    // Order matters: normalize + trim + fade in CUE-LOCAL time first, THEN
+    // delay into place, THEN duck (duck expressions are in output-timeline time).
     const cueLen = cue.region.end - cue.region.start
     const delayMs = Math.round(cue.region.start * 1000)
     chains.push(
-      `[${inputIdx}:a]atrim=0:${cueLen.toFixed(2)},asetpts=PTS-STARTPTS,` +
+      `[${inputIdx}:a]${AFMT},atrim=0:${cueLen.toFixed(2)},asetpts=PTS-STARTPTS,` +
         `afade=t=in:d=${cue.fadeInSec},afade=t=out:st=${Math.max(0, cueLen - cue.fadeOutSec).toFixed(2)}:d=${cue.fadeOutSec},` +
         `adelay=${delayMs}|${delayMs},` +
         `${duckGain}[m${inputIdx}]`
@@ -208,9 +220,8 @@ export async function mixAudio(
 
   for (const s of sfx) {
     inputs.push('-i', s.filePath)
-    chains.push(
-      `[${inputIdx}:a]adelay=${Math.round(s.at * 1000)}|${Math.round(s.at * 1000)},volume=${dbToLinear(s.gainDb)}[m${inputIdx}]`
-    )
+    const ms = Math.round(s.at * 1000)
+    chains.push(`[${inputIdx}:a]${AFMT},adelay=${ms}|${ms},volume=${dbToLinear(s.gainDb)}[m${inputIdx}]`)
     mixLabels.push(`[m${inputIdx}]`)
     inputIdx++
   }
@@ -247,7 +258,7 @@ export async function exportPreview(
   opts: RunOptions
 ): Promise<string> {
   const outPath = path.join(project.workDir, 'preview.mp4')
-  const nvenc = await hasNvenc()
+  const nvenc = await useNvenc()
   const vf: string[] = ['scale=-2:540']
   if (assPath) vf.push(`ass='${escapeFilterPath(assPath)}'`)
   await runFFmpeg(
@@ -273,7 +284,7 @@ export async function exportFinal(
   opts: RunOptions
 ): Promise<string> {
   const outPath = path.join(project.workDir, `final-${preset.id}.mp4`)
-  const nvenc = await hasNvenc()
+  const nvenc = await useNvenc()
   const vf: string[] = [
     // Fit-and-pad to the preset canvas (vertical preset crops via scale+pad).
     `scale=${preset.width}:${preset.height}:force_original_aspect_ratio=decrease`,

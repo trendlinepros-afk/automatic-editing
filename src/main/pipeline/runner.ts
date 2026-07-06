@@ -131,10 +131,12 @@ async function stageCutDetect(project: Project, ctx: JobContext): Promise<void> 
   }
 
   ctx.progress(0.55, 'Detecting silence…')
-  const silences = await detectSilence(project.source.path, cfg, ctx.signal)
-  // Keep manual cuts; replace prior pipeline-proposed ones.
-  const manual = project.edl.cuts.filter((c) => c.origin === 'manual')
-  project.edl.cuts = [...manual, ...silencesToCuts(silences, cfg)]
+  const silences = await detectSilence(project.source.path, cfg, project.source.durationSec, ctx.signal)
+  // Keep the user's manual cuts AND revision-driven cuts; replace only prior
+  // pipeline-proposed silence cuts (so a stage-1 re-run can't wipe an
+  // 'add-cut' revision the user just made).
+  const kept = project.edl.cuts.filter((c) => c.origin === 'manual' || c.origin === 'ai-revision')
+  project.edl.cuts = [...kept, ...silencesToCuts(silences, cfg)]
   project.edl.version++
   ctx.progress(1, `${project.edl.cuts.length} cuts proposed`)
 }
@@ -304,8 +306,14 @@ async function stagePreview(project: Project, ctx: JobContext): Promise<void> {
   if (!base) throw new Error('No upstream video. Run earlier stages first.')
 
   ctx.progress(0.1, 'Rendering 540p preview…')
+  // Preview keeps the source aspect ratio (scale=-2:540); match the ASS canvas.
+  const previewH = 540
+  const previewW = Math.max(2, Math.round((previewH * project.source.width) / Math.max(1, project.source.height)))
   const ass = project.transcript
-    ? buildAssFile(project.workDir, project.transcript, project.edl.captions, project.brandKit, renderKeep(project))
+    ? buildAssFile(project.workDir, project.transcript, project.edl.captions, project.brandKit, renderKeep(project), {
+        width: previewW,
+        height: previewH
+      })
     : null
   const outPath = await exportPreview(project, base, ass, {
     signal: ctx.signal,
@@ -353,8 +361,10 @@ export async function runStages(project: Project, stages: StageId[]): Promise<vo
         paused = result === 'paused'
       })
       state.status = paused ? 'awaiting-approval' : 'done'
-      state.finishedAt = new Date().toISOString()
-      if (!paused) markStale(project, id)
+      if (!paused) {
+        state.finishedAt = new Date().toISOString()
+        markStale(project, id)
+      }
       save(project)
       if (paused) return // graphics approval gate — stop the run here
     } catch (err: any) {

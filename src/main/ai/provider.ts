@@ -1,9 +1,9 @@
 /**
  * AI routing layer.
  *
- * One AIProvider interface, three cloud implementations (Gemini default,
- * OpenAI, DeepSeek) plus a Mock provider used whenever a key is absent so the
- * whole app runs end-to-end without credentials.
+ * One AIProvider interface, four cloud implementations (Gemini default,
+ * OpenAI, DeepSeek, Anthropic) plus a Mock provider used whenever a key is
+ * absent so the whole app runs end-to-end without credentials.
  *
  * Transcription is NOT routed here — it is pinned to OpenAI Whisper
  * (see transcription/whisper.ts).

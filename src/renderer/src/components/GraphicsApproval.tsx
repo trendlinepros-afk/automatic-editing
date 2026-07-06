@@ -18,6 +18,7 @@ export default function GraphicsApproval() {
   // if a push changes the planned set while the modal is open.
   const [items, setItems] = useState<Item[]>(() => planned.map((g) => ({ ...g, approved: true })))
   const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   const plannedKey = planned.map((g) => g.id).join(',')
   useEffect(() => {
@@ -27,6 +28,16 @@ export default function GraphicsApproval() {
     })
   }, [plannedKey])
 
+  // Escape acts as "Skip all graphics" so the blocking modal is never a trap.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !submitting) submit([])
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [submitting, items])
+
   if (!project) return null
 
   function updateSlot(id: string, slot: string, value: string) {
@@ -35,15 +46,23 @@ export default function GraphicsApproval() {
 
   async function submit(approvedIds: string[]) {
     setSubmitting(true)
+    setError(null)
     const edits = items.map(({ approved, ...g }) => g)
-    await window.zirtola.approveGraphics(project!.id, approvedIds, edits)
+    try {
+      await window.zirtola.approveGraphics(project!.id, approvedIds, edits)
+      // On success the main process flips the stage out of 'awaiting-approval'
+      // and this modal unmounts; leave `submitting` true until then.
+    } catch (err: any) {
+      setSubmitting(false)
+      setError(err?.message ?? 'Could not start the graphics render. Try again.')
+    }
   }
 
   const approvedCount = items.filter((g) => g.approved).length
 
   return (
     <div className="fixed inset-0 bg-ink-950/80 flex items-center justify-center z-50 p-8">
-      <div className="panel max-w-2xl w-full max-h-[80vh] flex flex-col">
+      <div className="panel max-w-2xl w-full max-h-[80vh] flex flex-col" role="dialog" aria-modal="true" aria-label="Graphics plan approval">
         <div className="p-4 border-b border-ink-700">
           <h2 className="font-display font-bold text-ink-50">Graphics plan — approve before rendering</h2>
           <p className="text-xs text-ink-400 mt-1">
@@ -81,7 +100,8 @@ export default function GraphicsApproval() {
             </div>
           ))}
         </div>
-        <div className="p-4 border-t border-ink-700 flex justify-end gap-2">
+        <div className="p-4 border-t border-ink-700 flex justify-end items-center gap-2">
+          {error && <span className="text-xs text-cut mr-auto">{error}</span>}
           <button className="btn" disabled={submitting} onClick={() => submit([])}>
             Skip all graphics
           </button>

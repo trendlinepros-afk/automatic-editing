@@ -22,9 +22,12 @@ export default function App() {
     }
   }, [])
 
-  // Global undo/redo shortcuts
+  // Global undo/redo shortcuts — but never hijack native text-undo while the
+  // user is typing in an input/textarea/contenteditable.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement | null
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
         e.preventDefault()
         if (e.shiftKey) useStore.getState().redo()
@@ -40,7 +43,10 @@ export default function App() {
   }, [])
 
   // Wait for settings before deciding; then gate on first-run onboarding.
-  if (!settings) return <div className="h-screen bg-ink-950" />
+  if (!settings)
+    return (
+      <div className="h-screen bg-ink-950 flex items-center justify-center text-ink-500 text-sm">Loading Zirtola…</div>
+    )
   if (!settings.onboarded) return <FirstRunView />
 
   return (

@@ -28,6 +28,14 @@ export default function PreviewPlayer() {
             className="max-h-full max-w-full"
             controls
             onTimeUpdate={(e) => setCurrentTime(e.currentTarget.currentTime)}
+            onLoadedMetadata={(e) => {
+              // Apply a seek that was requested before the element was ready
+              // (e.g. during a remount), which the effect would otherwise drop.
+              if (seekRequest !== null) {
+                e.currentTarget.currentTime = seekRequest
+                clearSeekRequest()
+              }
+            }}
           />
         ) : (
           <div className="text-center p-8">

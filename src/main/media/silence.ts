@@ -16,6 +16,7 @@ export interface SilenceOptions {
 export async function detectSilence(
   filePath: string,
   opts: SilenceOptions,
+  durationSec: number,
   signal?: AbortSignal
 ): Promise<TimeRegion[]> {
   const stderr = await runFFmpeg(
@@ -36,6 +37,10 @@ export async function detectSilence(
       regions.push({ start: pendingStart, end: Number(e[1]) })
       pendingStart = null
     }
+  }
+  // Silence that runs to EOF emits silence_start with no silence_end — close it.
+  if (pendingStart !== null && durationSec > pendingStart) {
+    regions.push({ start: pendingStart, end: durationSec })
   }
   return regions
 }

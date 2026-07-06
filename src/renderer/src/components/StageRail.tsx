@@ -75,9 +75,10 @@ export default function StageRail() {
               <span className="text-[10px] uppercase tracking-wide text-ink-500">{st.status}</span>
               {(st.status === 'done' || st.status === 'stale' || st.status === 'error') && (
                 <button
-                  className="text-[10px] text-signal hover:underline"
+                  className="text-[10px] text-signal hover:underline disabled:opacity-40 disabled:no-underline"
+                  disabled={anyRunning}
                   onClick={() => window.zirtola.runStage(project.id, id)}
-                  title="Re-run this stage only"
+                  title={anyRunning ? 'Wait for the current stage to finish' : 'Re-run this stage only'}
                 >
                   re-run
                 </button>

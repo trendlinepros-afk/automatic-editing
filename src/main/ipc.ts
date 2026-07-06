@@ -88,16 +88,20 @@ export function registerIpc(): void {
     pushProject(project)
   })
 
-  ipcMain.handle(IPC.exportFinal, async (_e, projectId: string, presetId: string) => {
+  ipcMain.handle(IPC.exportFinal, (_e, projectId: string, presetId: string) => {
     const project = projects.openProject(projectId)
     const preset = EXPORT_PRESETS.find((p) => p.id === presetId)
-    if (!preset) throw new Error(`Unknown export preset "${presetId}".`)
-    const base = latestArtifact(project, 'audio')
-    if (!base) throw new Error('Nothing to export yet — run the pipeline first.')
-
-    enqueueAndWait('final-export', `Final export: ${preset.label}`, project.id, async (ctx) => {
+    // Run the checks INSIDE the job so a failure shows as a failed queue job
+    // (visible to the user) instead of a silently-swallowed IPC rejection.
+    enqueueAndWait('final-export', preset ? `Final export: ${preset.label}` : 'Final export', project.id, async (ctx) => {
+      if (!preset) throw new Error(`Unknown export preset "${presetId}".`)
+      const base = latestArtifact(project, 'audio')
+      if (!base) throw new Error('Nothing to export yet — run the pipeline first.')
       const ass = project.transcript
-        ? buildAssFile(project.workDir, project.transcript, project.edl.captions, project.brandKit, renderKeep(project))
+        ? buildAssFile(project.workDir, project.transcript, project.edl.captions, project.brandKit, renderKeep(project), {
+            width: preset.width,
+            height: preset.height
+          })
         : null
       project.finalPath = await exportFinal(project, base, ass, preset, {
         signal: ctx.signal,

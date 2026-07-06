@@ -13,7 +13,10 @@ export function buildAssFile(
   transcript: Transcript,
   style: CaptionStyle,
   brand: BrandKit,
-  keep: TimeRegion[]
+  keep: TimeRegion[],
+  // The actual export frame. ASS PlayRes must match its aspect ratio or libass
+  // stretches glyphs (e.g. a 16:9 reference on a 9:16 vertical export).
+  canvas: { width: number; height: number } = { width: 1920, height: 1080 }
 ): string | null {
   if (!style.enabled) return null
 
@@ -28,8 +31,8 @@ export function buildAssFile(
   const header = [
     '[Script Info]',
     'ScriptType: v4.00+',
-    'PlayResX: 1920',
-    'PlayResY: 1080',
+    `PlayResX: ${Math.round(canvas.width)}`,
+    `PlayResY: ${Math.round(canvas.height)}`,
     '',
     '[V4+ Styles]',
     'Format: Name, Fontname, Fontsize, PrimaryColour, OutlineColour, BackColour, Bold, Italic, Alignment, MarginL, MarginR, MarginV, Outline, Shadow, BorderStyle',

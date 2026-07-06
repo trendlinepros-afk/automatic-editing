@@ -10,6 +10,7 @@ import { newId } from '@shared/id'
 import { probe } from './media/ffmpeg'
 import { getSettingsStore } from './settings'
 import { saveProjectRow, getProjectRow, listProjectRows, deleteProjectRow } from './db'
+import { renderQueue } from './queue'
 import { STAGE_ORDER, type EDL, type Project, type ProjectSummary, type StageId, type StageState } from '@shared/types'
 
 function projectsRoot(): string {
@@ -140,6 +141,14 @@ export function projectAlive(id: string): boolean {
 
 export function deleteProject(id: string): void {
   live.delete(id)
+  // Cancel any queued/running jobs for this project first — otherwise a live
+  // FFmpeg keeps writing into the folder we're about to remove and holds the
+  // single queue slot hostage.
+  for (const job of renderQueue.list()) {
+    if (job.projectId === id && (job.status === 'queued' || job.status === 'running')) {
+      renderQueue.cancel(job.id)
+    }
+  }
   deleteProjectRow(id)
   const workDir = path.join(projectsRoot(), id)
   if (fs.existsSync(workDir)) fs.rmSync(workDir, { recursive: true, force: true })

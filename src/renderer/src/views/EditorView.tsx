@@ -13,11 +13,11 @@ export default function EditorView({ shortsMode = false }: { shortsMode?: boolea
     return <div className="p-8 text-ink-500">No project open. Go back to the library and pick one.</div>
   }
 
-  const awaitingGraphics = project.stages.graphics.status === 'awaiting-approval'
-
   if (shortsMode) {
     return <ShortsPanel />
   }
+
+  const awaitingGraphics = project.stages.graphics.status === 'awaiting-approval'
 
   return (
     <div className="h-full flex flex-col min-h-0">

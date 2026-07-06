@@ -40,8 +40,10 @@ export default function Timeline() {
     [project?.trimKeep, project?.edl.version, project?.source.durationSec]
   )
 
-  if (!project) return null
-  const duration = project.source.durationSec || 1
+  // NOTE: the null-project guard is deferred until AFTER every hook below
+  // (the window-listener useEffect) so hooks run unconditionally. These
+  // non-hook consts are null-safe; the JSX (which uses project) is gated.
+  const duration = project ? project.source.durationSec || 1 : 1
 
   const pxToTime = (clientX: number): number => {
     const rect = trackRef.current!.getBoundingClientRect()
@@ -100,6 +102,8 @@ export default function Timeline() {
     }
     // Re-arm only when a gesture starts/ends, not on every position update.
   }, [drag !== null, keep])
+
+  if (!project) return null
 
   const cuts = project.edl.cuts.filter((c) => c.status !== 'rejected')
   const sel =

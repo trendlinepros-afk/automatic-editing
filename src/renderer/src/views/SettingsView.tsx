@@ -11,23 +11,25 @@ const TASKS: { id: AITask; label: string }[] = [
 const PROVIDERS: AIProviderId[] = ['gemini', 'openai', 'deepseek', 'anthropic']
 
 export default function SettingsView() {
-  const { settings, refreshSettings, project, setView } = useStore()
+  const { settings, refreshSettings, project, setView, viewBeforeSettings } = useStore()
   useEffect(() => {
     refreshSettings()
   }, [])
   if (!settings) return <div className="p-8 text-ink-500">Loading settings…</div>
 
-  // Back returns to wherever the user came from: the editor if a project is
-  // open, otherwise the project library.
-  const goBack = () => setView(project ? 'editor' : 'library')
+  // Back returns to the view the user came from (editor, shorts, or library),
+  // falling back to the library if that view needs a project and none is open.
+  const needsProject = viewBeforeSettings === 'editor' || viewBeforeSettings === 'shorts'
+  const backTarget = needsProject && !project ? 'library' : viewBeforeSettings
+  const backLabel = backTarget === 'editor' ? 'editor' : backTarget === 'shorts' ? 'shorts' : 'projects'
 
   return (
     <div className="h-full overflow-y-auto">
       <div className="p-8 max-w-3xl mx-auto space-y-8">
         <div className="flex items-center justify-between">
           <h1 className="font-display text-2xl font-bold text-ink-50">Settings</h1>
-          <button className="btn" onClick={goBack}>
-            ← Back{project ? ' to editor' : ' to projects'}
+          <button className="btn" onClick={() => setView(backTarget)}>
+            ← Back to {backLabel}
           </button>
         </div>
         <ProjectStorage />
@@ -67,6 +69,7 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
 
 function ProjectStorage() {
   const { settings, completeOnboarding } = useStore()
+  const [error, setError] = useState<string | null>(null)
   if (!settings) return null
   return (
     <Section
@@ -80,13 +83,20 @@ function ProjectStorage() {
         <button
           className="btn text-xs"
           onClick={async () => {
+            setError(null)
             const dir = await window.zirtola.pickDirectory()
-            if (dir) await completeOnboarding(dir)
+            if (!dir) return
+            try {
+              await completeOnboarding(dir)
+            } catch (err: any) {
+              setError(err?.message ?? "Couldn't use that folder — pick a different one.")
+            }
           }}
         >
           Change…
         </button>
       </Row>
+      {error && <p className="text-xs text-cut">{error}</p>}
     </Section>
   )
 }
@@ -121,8 +131,11 @@ function ApiKeys() {
           />
           <button
             className="btn text-xs shrink-0"
+            disabled={!(values[k.id] ?? '').trim()}
             onClick={async () => {
-              await window.zirtola.setApiKey(k.id, values[k.id] ?? '')
+              const val = (values[k.id] ?? '').trim()
+              if (!val) return // empty Save must not silently delete a saved key
+              await window.zirtola.setApiKey(k.id, val)
               setValues((v) => ({ ...v, [k.id]: '' }))
               refreshSettings()
             }}
@@ -256,9 +269,13 @@ function BrandKitPanel() {
             <label key={k} className="flex flex-col items-center gap-1 text-[10px] text-ink-500">
               <input
                 type="color"
-                value={bk.palette[k]}
+                // Uncontrolled + persist on blur: onChange fires on every drag
+                // tick of the OS picker, which would hammer disk with a save
+                // per tick. The native input shows the live color itself.
+                defaultValue={bk.palette[k]}
+                key={bk.palette[k]}
                 className="w-9 h-9 rounded cursor-pointer bg-transparent"
-                onChange={(e) => save({ palette: { ...bk.palette, [k]: e.target.value } })}
+                onBlur={(e) => save({ palette: { ...bk.palette, [k]: e.target.value } })}
               />
               {k}
             </label>
@@ -400,11 +417,21 @@ function Updates() {
             <button
               className="btn btn-primary"
               disabled={installing}
-              onClick={() => {
+              onClick={async () => {
                 setInstalling(true)
                 // Projects autosave on every edit, so progress is already on
-                // disk; this closes the app and installs the update.
-                window.zirtola.installUpdate()
+                // disk; this closes the app and installs the update. If it
+                // rejects (e.g. nothing staged), reset so the button isn't stuck.
+                try {
+                  await window.zirtola.installUpdate()
+                } catch (err: any) {
+                  setInstalling(false)
+                  setResult({
+                    status: 'error',
+                    currentVersion: result?.currentVersion ?? '',
+                    message: err?.message ?? 'Could not start the install. Try "Check for updates" again.'
+                  })
+                }
               }}
             >
               {installing ? 'Closing & installing…' : 'Save, close app & install update now'}

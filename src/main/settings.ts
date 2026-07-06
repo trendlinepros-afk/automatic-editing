@@ -101,8 +101,18 @@ class SettingsStore {
     this.settings = {
       ...this.settings,
       ...patch,
-      routing: patch.routing ?? this.settings.routing,
-      brandKit: patch.brandKit ?? this.settings.brandKit,
+      // Deep-merge nested objects so a partial patch (e.g. only brandKit.logoPath
+      // or one task provider) can't clobber sibling fields.
+      routing: patch.routing
+        ? { taskProviders: { ...this.settings.routing.taskProviders, ...patch.routing.taskProviders } }
+        : this.settings.routing,
+      brandKit: patch.brandKit
+        ? {
+            ...this.settings.brandKit,
+            ...patch.brandKit,
+            palette: { ...this.settings.brandKit.palette, ...patch.brandKit.palette }
+          }
+        : this.settings.brandKit,
       hosting: patch.hosting ? { ...this.settings.hosting, ...patch.hosting } : this.settings.hosting
     }
     this.refreshKeyPresence()
