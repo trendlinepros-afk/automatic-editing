@@ -68,16 +68,32 @@ interface Store {
 }
 
 export const useStore = create<Store>((set, get) => {
-  /** Single history bookkeeping path shared by mutateEdl/undo/redo. */
-  async function commitEdl(edl: EDL, stacks: { past: EDL[]; future: EDL[] }): Promise<void> {
+  /**
+   * Single history bookkeeping path shared by mutateEdl/undo/redo.
+   *
+   * The local apply is SYNCHRONOUS — project + stacks update in one set()
+   * against the current state, so a main-process push landing during the
+   * IPC round trip can never clobber a history entry computed before an
+   * await. The reply then reconciles to the canonical project unless
+   * something newer was pushed meanwhile (updatedAt comparison).
+   */
+  async function commitEdl(edl: EDL, mkStacks: (s: { past: EDL[]; future: EDL[] }) => { past: EDL[]; future: EDL[] }): Promise<void> {
     const { project } = get()
     if (!project) return
-    const updated = await window.wickedcut.updateEdl(project.id, edl)
-    set({
-      project: updated,
-      past: stacks.past.slice(-HISTORY_LIMIT),
-      future: stacks.future.slice(0, HISTORY_LIMIT)
+    set((s) => {
+      const stacks = mkStacks({ past: s.past, future: s.future })
+      return {
+        project: s.project ? { ...s.project, edl } : s.project,
+        past: stacks.past.slice(-HISTORY_LIMIT),
+        future: stacks.future.slice(0, HISTORY_LIMIT)
+      }
     })
+    const updated = await window.wickedcut.updateEdl(project.id, edl)
+    set((s) =>
+      s.project && s.project.id === updated.id && s.project.updatedAt <= updated.updatedAt
+        ? { project: updated }
+        : {}
+    )
   }
 
   return {
@@ -118,27 +134,31 @@ export const useStore = create<Store>((set, get) => {
     past: [],
     future: [],
     mutateEdl: async (fn) => {
-      const { project, past } = get()
+      const { project } = get()
       if (!project) return
       const before = project.edl // never mutated in place — safe to keep as the snapshot
       const after = fn(structuredClone(project.edl))
-      await commitEdl(after, { past: [...past, before], future: [] })
+      await commitEdl(after, (s) => ({ past: [...s.past, before], future: [] }))
     },
     undo: async () => {
-      const { project, past, future } = get()
+      const { project, past } = get()
       if (!project || past.length === 0) return
-      await commitEdl(past[past.length - 1], {
-        past: past.slice(0, -1),
-        future: [project.edl, ...future]
-      })
+      const prev = past[past.length - 1]
+      const current = project.edl
+      await commitEdl(prev, (s) => ({
+        past: s.past.slice(0, -1),
+        future: [current, ...s.future]
+      }))
     },
     redo: async () => {
-      const { project, past, future } = get()
+      const { project, future } = get()
       if (!project || future.length === 0) return
-      await commitEdl(future[0], {
-        past: [...past, project.edl],
-        future: future.slice(1)
-      })
+      const next = future[0]
+      const current = project.edl
+      await commitEdl(next, (s) => ({
+        past: [...s.past, current],
+        future: s.future.slice(1)
+      }))
     },
 
     jobs: [],

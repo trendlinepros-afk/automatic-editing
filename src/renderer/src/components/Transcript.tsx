@@ -5,7 +5,7 @@
  * source. Segments are memoized: during playback only the segment under the
  * playhead re-renders, not the whole (possibly hour-long) transcript.
  */
-import { memo, useMemo } from 'react'
+import { memo, useCallback, useMemo } from 'react'
 import { useStore, formatTime } from '../state/store'
 import { cutsToKeepSegments, sourceToTrimmedTime, trimmedToSourceTime } from '@shared/timemap'
 import type { TimeRegion, TranscriptSegment } from '@shared/types'
@@ -14,8 +14,6 @@ export default function Transcript() {
   const project = useStore((s) => s.project)
   const currentTime = useStore((s) => s.currentTime)
   const selection = useStore((s) => s.selection)
-  const setSelection = useStore((s) => s.setSelection)
-  const seek = useStore((s) => s.seek)
 
   const keep = useMemo(
     () =>
@@ -35,6 +33,20 @@ export default function Transcript() {
     [project?.edl.version]
   )
 
+  // Referentially STABLE callbacks (they read fresh state via getState) —
+  // otherwise every SegmentRow's memo() is defeated by new function
+  // identities on each ~4Hz timeupdate render.
+  const toggleSegment = useCallback((id: string) => {
+    const s = useStore.getState()
+    const cur = s.selection.segmentIds
+    s.setSelection({ segmentIds: cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id] })
+  }, [])
+
+  const seekSource = useCallback(
+    (t: number) => useStore.getState().seek(sourceToTrimmedTime(t, keep)),
+    [keep]
+  )
+
   if (!project) return null
   if (!project.transcript) {
     return (
@@ -46,12 +58,6 @@ export default function Transcript() {
 
   // Video clock (trimmed) → source time, once per render.
   const srcTime = trimmedToSourceTime(currentTime, keep)
-  const seekSource = (t: number) => seek(sourceToTrimmedTime(t, keep))
-
-  function toggleSegment(id: string) {
-    const cur = selection.segmentIds
-    setSelection({ segmentIds: cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id] })
-  }
 
   return (
     <div className="panel flex-1 min-h-0 overflow-y-auto p-3 leading-relaxed">

@@ -9,20 +9,28 @@
  * ruler to select a region for a revision instruction; drag cut edges to
  * adjust in/out points manually (one undoable EDL edit per drag).
  */
-import { useMemo, useRef, useState, type MouseEvent } from 'react'
+import { useEffect, useMemo, useRef, useState, type MouseEvent } from 'react'
 import { useStore, formatTime } from '../state/store'
 import { cutsToKeepSegments, sourceToTrimmedTime, trimmedToSourceTime } from '@shared/timemap'
 import type { CutRegion } from '@shared/types'
 
 type Drag =
   | { kind: 'select'; from: number; to: number }
-  | { kind: 'cut-edge'; id: string; edge: 'start' | 'end'; t: number }
+  // t0 = the edge's original value, for the no-movement click guard.
+  | { kind: 'cut-edge'; id: string; edge: 'start' | 'end'; t: number; t0: number }
   | null
+
+/** Ignore edge "drags" that moved less than this — a plain click on the 6px
+ *  handle must not commit a pixel-quantized boundary shift (which would also
+ *  mark the whole pipeline stale). */
+const EDGE_COMMIT_THRESHOLD_SEC = 0.03
 
 export default function Timeline() {
   const { project, currentTime, seek, selection, setSelection, mutateEdl } = useStore()
   const trackRef = useRef<HTMLDivElement>(null)
   const [drag, setDrag] = useState<Drag>(null)
+  const dragRef = useRef<Drag>(null)
+  dragRef.current = drag
 
   const keep = useMemo(
     () =>
@@ -46,38 +54,52 @@ export default function Timeline() {
     const from = pxToTime(e.clientX)
     setDrag({ kind: 'select', from, to: from })
   }
-  function onMove(e: MouseEvent) {
+
+  // Gestures track on the WINDOW while active, so leaving the panel (fast
+  // drags, edges of the track) never silently drops a nearly-finished
+  // adjustment — mouseup anywhere commits.
+  useEffect(() => {
     if (!drag) return
-    const t = pxToTime(e.clientX)
-    setDrag(drag.kind === 'select' ? { ...drag, to: t } : { ...drag, t })
-  }
-  function onUp(e: MouseEvent) {
-    if (!drag) return
-    const t = pxToTime(e.clientX)
-    if (drag.kind === 'select') {
-      const a = Math.min(drag.from, t)
-      const b = Math.max(drag.from, t)
-      if (b - a < 0.15) {
-        // Plain click: seek the preview (convert source → trimmed).
-        seek(sourceToTrimmedTime(a, keep))
-        setSelection({ region: null })
-      } else {
-        setSelection({ region: { start: a, end: b } })
-      }
-    } else {
-      // Commit the edge drag as ONE undoable EDL mutation.
-      const { id, edge } = drag
-      mutateEdl((edl) => ({
-        ...edl,
-        cuts: edl.cuts.map((c) => (c.id === id ? clampCut({ ...c, [edge]: t, origin: 'manual' as const }) : c))
-      }))
+    const onMove = (e: globalThis.MouseEvent) => {
+      const d = dragRef.current
+      if (!d) return
+      const t = pxToTime(e.clientX)
+      setDrag(d.kind === 'select' ? { ...d, to: t } : { ...d, t })
     }
-    setDrag(null)
-  }
-  // Leaving mid-gesture cancels it — no half-armed drags on re-entry.
-  function onLeave() {
-    setDrag(null)
-  }
+    const onUp = (e: globalThis.MouseEvent) => {
+      const d = dragRef.current
+      setDrag(null)
+      if (!d) return
+      const t = pxToTime(e.clientX)
+      if (d.kind === 'select') {
+        const a = Math.min(d.from, t)
+        const b = Math.max(d.from, t)
+        if (b - a < 0.15) {
+          // Plain click: seek the preview (convert source → trimmed).
+          seek(sourceToTrimmedTime(a, keep))
+          setSelection({ region: null })
+        } else {
+          setSelection({ region: { start: a, end: b } })
+        }
+      } else {
+        // A click that didn't actually move the edge is not an edit.
+        if (Math.abs(t - d.t0) < EDGE_COMMIT_THRESHOLD_SEC) return
+        const { id, edge } = d
+        // Commit the edge drag as ONE undoable EDL mutation.
+        mutateEdl((edl) => ({
+          ...edl,
+          cuts: edl.cuts.map((c) => (c.id === id ? clampCut({ ...c, [edge]: t, origin: 'manual' as const }) : c))
+        }))
+      }
+    }
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
+    return () => {
+      window.removeEventListener('mousemove', onMove)
+      window.removeEventListener('mouseup', onUp)
+    }
+    // Re-arm only when a gesture starts/ends, not on every position update.
+  }, [drag !== null, keep])
 
   const cuts = project.edl.cuts.filter((c) => c.status !== 'rejected')
   const sel =
@@ -89,7 +111,7 @@ export default function Timeline() {
   const playheadSrc = trimmedToSourceTime(currentTime, keep)
 
   return (
-    <div className="panel p-3 select-none" onMouseMove={onMove} onMouseUp={onUp} onMouseLeave={onLeave}>
+    <div className="panel p-3 select-none">
       <div className="flex items-center justify-between mb-2 text-xs text-ink-400">
         <span className="font-display font-semibold text-ink-200">Timeline</span>
         <span>
@@ -130,8 +152,8 @@ export default function Timeline() {
                 style={{ left: pct(Math.min(start, end)), width: widthPct(Math.min(start, end), Math.max(start, end)) }}
                 onMouseDown={(e) => e.stopPropagation()}
               >
-                <Edge onDown={() => setDrag({ kind: 'cut-edge', id: c.id, edge: 'start', t: c.start })} side="left" />
-                <Edge onDown={() => setDrag({ kind: 'cut-edge', id: c.id, edge: 'end', t: c.end })} side="right" />
+                <Edge onDown={() => setDrag({ kind: 'cut-edge', id: c.id, edge: 'start', t: c.start, t0: c.start })} side="left" />
+                <Edge onDown={() => setDrag({ kind: 'cut-edge', id: c.id, edge: 'end', t: c.end, t0: c.end })} side="right" />
               </div>
             )
           })}
