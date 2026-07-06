@@ -1,0 +1,59 @@
+name: Build & Release (Windows)
+
+# Every push to main builds the Windows installer and publishes it as a
+# GitHub Release. The version is derived from the run number so it ALWAYS
+# increments — electron-updater then reliably sees each build as newer, and
+# the in-app "Check for updates" button always finds the latest.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+permissions:
+  contents: write # required to create Releases and upload assets
+
+concurrency:
+  group: release-main
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      # Installs deps, downloads ffmpeg/ffprobe binaries, and rebuilds
+      # better-sqlite3 against Electron's ABI (postinstall install-app-deps).
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Compute version
+        id: ver
+        shell: bash
+        run: echo "version=0.1.${{ github.run_number }}" >> "$GITHUB_OUTPUT"
+
+      - name: Build renderer + main bundles
+        run: npm run build
+
+      # Package the NSIS installer and publish it to a GitHub Release tagged
+      # v<version>. --publish always uploads the installer AND latest.yml (the
+      # update feed the app reads). extraMetadata.version overrides the version
+      # for this build without committing a package.json change.
+      - name: Build & publish installer
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npx electron-builder --win --publish always -c.extraMetadata.version=${{ steps.ver.outputs.version }}
+
+      # Also attach the installer to the workflow run so it's downloadable
+      # even before the Release is browsed.
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: WickedCut-Setup-${{ steps.ver.outputs.version }}
+          path: release/*.exe
+          if-no-files-found: error

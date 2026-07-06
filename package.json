@@ -32,7 +32,8 @@
     "win": {
       "target": [
         "nsis"
-      ]
+      ],
+      "artifactName": "WickedCut-Setup-${version}.exe"
     },
     "nsis": {
       "oneClick": false,
