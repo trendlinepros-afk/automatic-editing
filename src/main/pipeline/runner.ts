@@ -75,6 +75,18 @@ export function keepSegments(project: Project): TimeRegion[] {
 }
 
 /**
+ * Keep-map for RENDER-TIME conversions. Artifacts downstream of stage 2 are
+ * all derived from trimmed.mp4, so conversions against them must use the
+ * snapshot captured when trimmed.mp4 was built (project.trimKeep) — NOT the
+ * live cut list, which may have changed since (that mismatch would anchor
+ * events through the wrong map). When cuts change, cut-review goes stale and
+ * a re-run refreshes both trimmed.mp4 and this snapshot together.
+ */
+export function renderKeep(project: Project): TimeRegion[] {
+  return project.trimKeep ?? keepSegments(project)
+}
+
+/**
  * Latest upstream artifact at or before `upTo`, derived from STAGE_ORDER so
  * inserting a stage can never silently skip it in one hand-written chain.
  */
@@ -158,7 +170,9 @@ async function stageTransitions(project: Project, ctx: JobContext): Promise<void
   const trimmed = project.stages['cut-review'].artifactPath
   if (!trimmed) throw new Error('No trimmed video. Run stage 2 first.')
   const cfg = getSettingsStore().getSettings().scene
-  const keep = keepSegments(project)
+  // Must be the keep-map trimmed.mp4 was BUILT with — boundaries detected on
+  // that file convert back to source through the same map.
+  const keep = renderKeep(project)
 
   ctx.progress(0.1, 'Detecting scene changes…')
   // Scene detection runs on the trimmed video → boundaries arrive in trimmed
@@ -223,7 +237,7 @@ async function renderAndCompositeGraphics(project: Project, ctx: JobContext): Pr
   ctx.progress(0.85, 'Compositing graphics…')
   const base = latestArtifact(project, 'transitions')
   if (!base) throw new Error('No upstream video to composite onto. Run earlier stages first.')
-  const outPath = await compositeGraphics(project, base, keepSegments(project), { signal: ctx.signal })
+  const outPath = await compositeGraphics(project, base, renderKeep(project), { signal: ctx.signal })
   project.stages['graphics'].artifactPath = outPath
 }
 
@@ -275,7 +289,7 @@ export async function approveGraphicsAndRender(
 async function stageAudio(project: Project, ctx: JobContext): Promise<void> {
   const base = latestArtifact(project, 'graphics')
   if (!base) throw new Error('No upstream video. Run earlier stages first.')
-  const keep = keepSegments(project)
+  const keep = renderKeep(project)
 
   ctx.progress(0.2, 'Mixing music + SFX with auto-ducking…')
   const outPath = await mixAudio(project, base, keep, speechRegionsTrimmed(project, keep), {
@@ -291,7 +305,7 @@ async function stagePreview(project: Project, ctx: JobContext): Promise<void> {
 
   ctx.progress(0.1, 'Rendering 540p preview…')
   const ass = project.transcript
-    ? buildAssFile(project.workDir, project.transcript, project.edl.captions, project.brandKit, keepSegments(project))
+    ? buildAssFile(project.workDir, project.transcript, project.edl.captions, project.brandKit, renderKeep(project))
     : null
   const outPath = await exportPreview(project, base, ass, {
     signal: ctx.signal,
@@ -376,7 +390,18 @@ export async function runSingleStage(project: Project, stage: StageId, _region?:
   for (const id of downstream) {
     if (id === 'graphics') {
       const hasGraphics = project.edl.graphics.some((g) => g.status === 'approved' || g.status === 'rendered')
-      if (!hasGraphics) continue // nothing to composite; audio uses transitions artifact
+      if (!hasGraphics) {
+        // Nothing left to composite (e.g. the last graphic was just removed):
+        // DROP the old composite artifact so audio/preview fall back to the
+        // transitions output — otherwise the removed graphic would live on,
+        // baked into the stale graphics.mp4.
+        if (project.stages['graphics'].artifactPath) {
+          project.stages['graphics'].artifactPath = undefined
+          if (project.stages['graphics'].status !== 'pending') project.stages['graphics'].status = 'done'
+          save(project)
+        }
+        continue
+      }
       const state = project.stages['graphics']
       state.status = 'running'
       state.error = undefined

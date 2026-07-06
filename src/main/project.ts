@@ -128,6 +128,14 @@ export function listProjects(): ProjectSummary[] {
   return listProjectRows()
 }
 
+/** True while the project is open in the registry and its folder exists —
+ *  detached background work (e.g. OpusClip polling) checks this to stop
+ *  cleanly after a delete. */
+export function projectAlive(id: string): boolean {
+  const p = live.get(id)
+  return Boolean(p && fs.existsSync(p.workDir))
+}
+
 export function deleteProject(id: string): void {
   live.delete(id)
   deleteProjectRow(id)

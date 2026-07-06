@@ -58,20 +58,37 @@ export async function applyTransitions(
     fs.copyFileSync(inPath, outPath)
     return outPath
   }
-  // Dip-to-black is rendered as brief fades around each boundary; crossfade at
-  // a hard boundary of an already-joined file is approximated the same way
-  // (real crossfade would need the pre-join segments — tracked in the EDL for
-  // a future segment-wise renderer).
-  const fades: string[] = []
-  for (const t of transitions) {
-    const half = t.durationSec / 2
-    fades.push(`fade=t=out:st=${Math.max(0, t.at - half).toFixed(3)}:d=${half.toFixed(3)}`)
-    fades.push(`fade=t=in:st=${t.at.toFixed(3)}:d=${half.toFixed(3)}`)
-  }
+  // Each transition is a short black clip with an alpha fade in/out overlaid
+  // at the boundary (a dip-to-black). NOTE: plain `fade` filters can NOT be
+  // chained for mid-video dips — fade-in holds black for every frame before
+  // its start and fade-out after its end, so one transition would black out
+  // the entire video. Overlaying self-contained faded clips composes safely.
+  // Crossfade at a hard boundary of an already-joined file is approximated
+  // the same way (a true crossfade needs the pre-join segments — tracked in
+  // the EDL for a future segment-wise renderer).
+  const { width, height } = project.source
+  const parts: string[] = []
+  let prev = '[0:v]'
+  transitions.forEach((t, i) => {
+    const dur = t.durationSec
+    const half = dur / 2
+    const start = Math.max(0, t.at - half)
+    parts.push(
+      `color=black:s=${width}x${height}:d=${dur.toFixed(3)}[b${i}]`,
+      `[b${i}]format=yuva420p,fade=t=in:st=0:d=${half.toFixed(3)}:alpha=1,` +
+        `fade=t=out:st=${half.toFixed(3)}:d=${half.toFixed(3)}:alpha=1,` +
+        `setpts=PTS-STARTPTS+${start.toFixed(3)}/TB[f${i}]`
+    )
+    const label = i === transitions.length - 1 ? '[vout]' : `[t${i}]`
+    parts.push(`${prev}[f${i}]overlay=0:0:eof_action=pass${label}`)
+    prev = `[t${i}]`
+  })
+
   await runFFmpeg(
     [
       '-i', inPath,
-      '-vf', fades.join(','),
+      '-filter_complex', parts.join(';'),
+      '-map', '[vout]', '-map', '0:a?',
       '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '16',
       '-c:a', 'copy',
       outPath

@@ -17,7 +17,7 @@ import { newId } from '@shared/id'
 import { apiError, sleep } from '../net'
 import type { OpusClipResult, Project, ShortsProjectState } from '@shared/types'
 import { getHost } from './hosting'
-import { saveProject } from '../project'
+import { saveProject, projectAlive } from '../project'
 import { pushProject } from '../pipeline/runner'
 import type { JobContext } from '../queue'
 
@@ -120,13 +120,23 @@ async function pollDetached(project: Project, state: ShortsProjectState): Promis
   try {
     while (Date.now() < deadline && state.status === 'processing') {
       await sleep(15000)
+      // Project deleted mid-poll → stop cleanly, no more API calls or saves.
+      if (!projectAlive(project.id)) return
       await checkOne(project, state)
     }
   } catch (err: any) {
-    // Polling failures are non-fatal — the Refresh button re-checks.
-    state.error = err?.message ?? String(err)
-    saveProject(project)
-    pushProject(project)
+    // Polling failures are non-fatal — the Refresh button re-checks. This is
+    // a detached (void'd) promise, so NOTHING here may throw: even recording
+    // the error is best-effort (saveProject throws if the project vanished).
+    try {
+      state.error = err?.message ?? String(err)
+      if (projectAlive(project.id)) {
+        saveProject(project)
+        pushProject(project)
+      }
+    } catch (persistErr) {
+      console.warn('[shorts] could not persist polling error:', persistErr)
+    }
   }
 }
 

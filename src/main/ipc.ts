@@ -16,7 +16,7 @@ import {
   approveGraphicsAndRender,
   transcriptEstimate,
   pushProject,
-  keepSegments,
+  renderKeep,
   latestArtifact,
   markStaleForEdlChange
 } from './pipeline/runner'
@@ -96,7 +96,7 @@ export function registerIpc(): void {
 
     enqueueAndWait('final-export', `Final export: ${preset.label}`, project.id, async (ctx) => {
       const ass = project.transcript
-        ? buildAssFile(project.workDir, project.transcript, project.edl.captions, project.brandKit, keepSegments(project))
+        ? buildAssFile(project.workDir, project.transcript, project.edl.captions, project.brandKit, renderKeep(project))
         : null
       project.finalPath = await exportFinal(project, base, ass, preset, {
         signal: ctx.signal,
