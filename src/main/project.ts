@@ -9,6 +9,7 @@ import { newId } from '@shared/id'
 import { probe } from './media/ffmpeg'
 import { getSettingsStore } from './settings'
 import { projectsRoot } from './storage'
+import { buildMediaItems, pruneMediaById } from './mediapool'
 import { saveProjectRow, getProjectRow, listProjectRows, deleteProjectRow } from './db'
 import { renderQueue } from './queue'
 import { STAGE_ORDER, type EDL, type Project, type ProjectSummary, type StageId, type StageState } from '@shared/types'
@@ -104,13 +105,41 @@ export async function createProject(name: string, sourcePath?: string): Promise<
   return project
 }
 
+/** Add videos/folders to the project's media pool (referenced in place). */
+export function addProjectMedia(id: string, paths: string[]): Project {
+  const project = openProject(id)
+  const existing = project.media ?? []
+  const seen = new Set(existing.map((m) => m.path))
+  const additions = buildMediaItems(paths).filter((m) => !seen.has(m.path))
+  if (additions.length === 0) {
+    // Nothing new (dupes, or no videos found) — surface it if the pool is empty.
+    if (existing.length === 0) throw new Error('No video files were found in that selection.')
+    return project
+  }
+  project.media = [...existing, ...additions]
+  saveProject(project)
+  return project
+}
+
+/** Remove one item (video or folder) from the media pool. */
+export function removeProjectMedia(id: string, itemId: string): Project {
+  const project = openProject(id)
+  project.media = pruneMediaById(project.media ?? [], itemId)
+  saveProject(project)
+  return project
+}
+
 /** Attach (or replace) the source video on a project, probing it and resetting
- *  the pipeline so stages re-run against the new footage. */
+ *  the pipeline so stages re-run against the new footage. Re-selecting the clip
+ *  that is already active is a no-op (keeps existing edits). */
 export async function setProjectSource(id: string, sourcePath: string): Promise<Project> {
   if (!fs.existsSync(sourcePath)) {
     throw new Error(`Source file not found: ${sourcePath}. Pick the file again.`)
   }
   const project = openProject(id)
+  if (project.source && path.resolve(project.source.path) === path.resolve(sourcePath)) {
+    return project
+  }
   project.source = await probe(sourcePath)
   // A new source invalidates any prior edit/render work.
   project.edl = emptyEdl()

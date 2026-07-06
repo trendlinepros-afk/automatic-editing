@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useStore } from './state/store'
 import LibraryView from './views/LibraryView'
+import MediaView from './views/MediaView'
 import EditorView from './views/EditorView'
 import SettingsView from './views/SettingsView'
 import FirstRunView from './views/FirstRunView'
@@ -93,6 +94,11 @@ export default function App() {
         <div className="flex-1" />
         <nav className="flex gap-1">
           {project && (
+            <button className={navCls(view === 'media')} onClick={() => setView('media')}>
+              Media
+            </button>
+          )}
+          {project && (
             <button className={navCls(view === 'editor')} onClick={() => setView('editor')}>
               Editor
             </button>
@@ -111,6 +117,7 @@ export default function App() {
       <main className="flex-1 min-h-0 flex">
         <div className="flex-1 min-w-0">
           {view === 'library' && <LibraryView />}
+          {view === 'media' && <MediaView />}
           {view === 'editor' && <EditorView />}
           {view === 'settings' && <SettingsView />}
           {view === 'shorts' && <EditorView shortsMode />}

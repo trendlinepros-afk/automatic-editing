@@ -30,6 +30,12 @@ export const IPC = {
   pickSourceFile: 'project:pick-source',
   pickProjectFile: 'project:pick-file',
 
+  // Media pool
+  mediaImport: 'media:import',
+  mediaRemove: 'media:remove',
+  pickMediaFiles: 'media:pick-files',
+  pickMediaFolder: 'media:pick-folder',
+
   // Pipeline
   pipelineRun: 'pipeline:run',
   pipelineRunStage: 'pipeline:run-stage',
@@ -79,8 +85,19 @@ export interface ZirtolaApi {
   /** Create a project. A source video is optional — a named project gets its
    *  folder immediately and footage is attached afterward. */
   createProject(name: string, sourcePath?: string): Promise<Project>
-  /** Attach (or replace) the source video on a project. */
+  /** Attach (or replace) the active source video on a project. */
   setProjectSource(id: string, sourcePath: string): Promise<Project>
+
+  // Media pool
+  /** Import videos/folders (by absolute path) into the project media pool. */
+  importMedia(projectId: string, paths: string[]): Promise<Project>
+  removeMedia(projectId: string, itemId: string): Promise<Project>
+  /** Open a multi-select file dialog for videos; returns absolute paths. */
+  pickMediaFiles(): Promise<string[]>
+  /** Open a folder dialog; returns the chosen folder path. */
+  pickMediaFolder(): Promise<string | null>
+  /** Resolve the absolute path of a dropped File (Electron webUtils). */
+  pathForFile(file: File): string
   /** Open a project the user picked from disk (its project.json). */
   importProject(filePath: string): Promise<Project>
   openProject(id: string): Promise<Project>

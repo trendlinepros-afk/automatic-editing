@@ -52,6 +52,27 @@ export function registerIpc(): void {
   ipcMain.handle(IPC.projectCreate, (_e, name: string, sourcePath?: string) => projects.createProject(name, sourcePath))
   ipcMain.handle(IPC.projectSetSource, (_e, id: string, sourcePath: string) => projects.setProjectSource(id, sourcePath))
   ipcMain.handle(IPC.projectImport, (_e, filePath: string) => projects.importProjectFromFile(filePath))
+
+  // -- Media pool ----------------------------------------------------------
+  ipcMain.handle(IPC.mediaImport, (_e, projectId: string, paths: string[]) => projects.addProjectMedia(projectId, paths))
+  ipcMain.handle(IPC.mediaRemove, (_e, projectId: string, itemId: string) => projects.removeProjectMedia(projectId, itemId))
+
+  ipcMain.handle(IPC.pickMediaFiles, async () => {
+    const res = await dialog.showOpenDialog({
+      title: 'Import video files',
+      filters: [{ name: 'Video', extensions: ['mp4', 'mov', 'mkv', 'avi', 'webm', 'm4v', 'mpg', 'mpeg', 'wmv', 'flv', 'ts', 'mts', 'm2ts', '3gp'] }],
+      properties: ['openFile', 'multiSelections']
+    })
+    return res.canceled ? [] : res.filePaths
+  })
+
+  ipcMain.handle(IPC.pickMediaFolder, async () => {
+    const res = await dialog.showOpenDialog({
+      title: 'Import a folder of videos',
+      properties: ['openDirectory']
+    })
+    return res.canceled ? null : res.filePaths[0]
+  })
   ipcMain.handle(IPC.projectOpen, (_e, id: string) => projects.openProject(id))
   ipcMain.handle(IPC.projectList, () => projects.listProjects())
   ipcMain.handle(IPC.projectDelete, (_e, id: string) => projects.deleteProject(id))

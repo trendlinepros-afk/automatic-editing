@@ -2,7 +2,7 @@
  * Preload — exposes the typed Zirtola API to the renderer over a
  * contextIsolation bridge. No Node primitives leak into the page.
  */
-import { contextBridge, ipcRenderer } from 'electron'
+import { contextBridge, ipcRenderer, webUtils } from 'electron'
 import { IPC, type ZirtolaApi } from '@shared/ipc'
 import type { RenderJob, Project } from '@shared/types'
 
@@ -12,6 +12,13 @@ const api: ZirtolaApi = {
   createProject: (name, sourcePath) => ipcRenderer.invoke(IPC.projectCreate, name, sourcePath),
   setProjectSource: (id, sourcePath) => ipcRenderer.invoke(IPC.projectSetSource, id, sourcePath),
   importProject: (filePath) => ipcRenderer.invoke(IPC.projectImport, filePath),
+
+  importMedia: (projectId, paths) => ipcRenderer.invoke(IPC.mediaImport, projectId, paths),
+  removeMedia: (projectId, itemId) => ipcRenderer.invoke(IPC.mediaRemove, projectId, itemId),
+  pickMediaFiles: () => ipcRenderer.invoke(IPC.pickMediaFiles),
+  pickMediaFolder: () => ipcRenderer.invoke(IPC.pickMediaFolder),
+  // Resolves a dropped File to its absolute path without exposing Node to the page.
+  pathForFile: (file) => webUtils.getPathForFile(file),
   openProject: (id) => ipcRenderer.invoke(IPC.projectOpen, id),
   listProjects: () => ipcRenderer.invoke(IPC.projectList),
   deleteProject: (id) => ipcRenderer.invoke(IPC.projectDelete, id),

@@ -241,6 +241,22 @@ export interface SourceInfo {
   hasAudio: boolean
 }
 
+/**
+ * An item in the project's media pool. Videos and folders are referenced IN
+ * PLACE (never copied); folders keep their on-disk structure so the pool
+ * mirrors the user's own sorting. One video is picked as the active `source`
+ * the AI pipeline edits.
+ */
+export interface MediaItem {
+  id: string
+  name: string
+  /** Absolute path on disk — referenced in place, never copied or moved. */
+  path: string
+  kind: 'video' | 'folder'
+  /** Present only for folders. */
+  children?: MediaItem[]
+}
+
 export interface Project {
   id: string
   name: string
@@ -249,6 +265,9 @@ export interface Project {
   /** Original file — NEVER modified. All work happens in workDir. Undefined
    *  until the user attaches a source video to a freshly-named project. */
   source?: SourceInfo
+  /** Imported media (videos + folders), referenced in place. The user picks one
+   *  video from here as the active `source`. */
+  media?: MediaItem[]
   workDir: string
   /**
    * Keep-segments snapshot from the last cut application — defines the

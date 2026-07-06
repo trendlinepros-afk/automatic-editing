@@ -16,7 +16,7 @@ import type {
 } from '@shared/types'
 export { formatTime } from '@shared/time'
 
-export type View = 'library' | 'editor' | 'settings' | 'shorts'
+export type View = 'library' | 'media' | 'editor' | 'settings' | 'shorts'
 
 const HISTORY_LIMIT = 50
 
@@ -116,7 +116,8 @@ export const useStore = create<Store>((set, get) => {
       const project = await window.zirtola.openProject(id)
       set({
         project,
-        view: 'editor',
+        // Land in the media pool until a clip is chosen as the active source.
+        view: project.source ? 'editor' : 'media',
         past: [],
         future: [],
         currentTime: 0,

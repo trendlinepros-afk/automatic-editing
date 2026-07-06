@@ -34,7 +34,8 @@ export default function NewProjectModal({ busy, onConfirm, onCancel }: Props) {
       <div className="panel bg-ink-850 w-full max-w-md p-6" onClick={(e) => e.stopPropagation()}>
         <h2 className="font-display text-lg font-bold text-ink-50 mb-1">Name your project</h2>
         <p className="text-xs text-ink-500 mb-4">
-          A folder with this name is created inside your <b>Projects</b> folder. You'll pick the source video next.
+          A folder with this name is created inside your <b>Projects</b> folder. You'll land in the Media pool to
+          import your footage.
         </p>
 
         <input
