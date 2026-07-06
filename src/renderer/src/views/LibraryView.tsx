@@ -95,7 +95,8 @@ export default function LibraryView() {
           <p className="text-ink-400 mb-2">No projects yet.</p>
           <p className="text-sm text-ink-500">
             <b>Create New Project</b> to start from a source video, or <b>Open Project</b> to load an existing one.
-            Zirtola never modifies your original file — all work happens on copies in the project folder.
+            Your source video is linked in place and read-only — Zirtola never copies or modifies it, and writes only
+            the edited output to the project folder.
           </p>
         </div>
       ) : (

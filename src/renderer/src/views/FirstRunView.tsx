@@ -36,8 +36,8 @@ export default function FirstRunView() {
         </h1>
         <p className="text-sm text-ink-400 mb-6">
           First, choose a <b className="text-ink-200">master folder</b>. Every project you create — and all its
-          intermediate renders and exports — will live inside it. Your original source videos are never moved or
-          modified.
+          intermediate renders and exports — will live inside it. Your source videos stay wherever they already are:
+          Zirtola links to them in place and never copies, moves, or modifies your originals.
         </p>
 
         <div className="panel bg-ink-850 p-4 mb-4">
