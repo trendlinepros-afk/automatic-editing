@@ -51,7 +51,10 @@ export async function reviewCuts(
         'Only include decisions for cuts that need rejecting or adjusting; omitted cuts are kept as-is.',
       user: `TRANSCRIPT:\n${transcriptCompact}\n\nPROPOSED CUTS (seconds):\n${JSON.stringify(cutsCompact)}`,
       jsonSchemaHint: 'decisions array',
-      temperature: 0.1
+      temperature: 0.1,
+      // A long cut list can produce many decisions — give headroom so the JSON
+      // array isn't truncated mid-element.
+      maxTokens: 16384
     },
     signal
   )
