@@ -43,7 +43,8 @@
       {
         "provider": "github",
         "owner": "trendlinepros-afk",
-        "repo": "automatic-editing"
+        "repo": "automatic-editing",
+        "releaseType": "release"
       }
     ]
   },
