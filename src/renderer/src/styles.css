@@ -1,0 +1,78 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+}
+
+body {
+  @apply bg-ink-950 text-ink-200 font-body antialiased overflow-hidden select-none;
+}
+
+/* Visible keyboard focus everywhere — precision tool, keyboard-first. */
+:focus-visible {
+  outline: 2px solid theme('colors.signal.DEFAULT');
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+.btn {
+  @apply inline-flex items-center gap-2 rounded-md px-3 py-1.5 text-sm font-medium
+         bg-ink-800 text-ink-200 hover:bg-ink-700 transition-colors
+         disabled:opacity-40 disabled:cursor-not-allowed;
+}
+.btn-primary {
+  @apply bg-signal-deep text-ink-50 hover:bg-signal-dim hover:text-ink-950;
+}
+.btn-danger {
+  @apply bg-cut/20 text-cut hover:bg-cut/30;
+}
+
+.input {
+  @apply w-full rounded-md bg-ink-900 border border-ink-700 px-3 py-1.5 text-sm text-ink-200
+         placeholder:text-ink-500 focus:border-signal focus:outline-none;
+}
+
+.panel {
+  @apply bg-ink-900 border border-ink-700 rounded-lg;
+}
+
+.label {
+  @apply block text-xs font-medium uppercase tracking-wider text-ink-400 mb-1;
+}
+
+/* Transcript ↔ timeline signature treatment: active words glow signal. */
+.word {
+  @apply cursor-pointer rounded px-0.5 transition-colors hover:bg-ink-700;
+}
+.word-active {
+  @apply bg-signal/20 text-signal;
+}
+.word-cut {
+  @apply text-ink-600 line-through decoration-cut/70;
+}
+.seg-selected {
+  @apply bg-signal/10 ring-1 ring-signal/40;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: theme('colors.ink.700');
+  border-radius: 5px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
