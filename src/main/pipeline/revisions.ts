@@ -5,11 +5,14 @@
  */
 import { newId } from '@shared/id'
 import type { Project, RevisionAction, RevisionInstruction, TimeRegion } from '@shared/types'
-import { parseRevision } from '../ai/tasks'
-import { fillSlots } from '../ai/tasks'
+import { parseRevision, fillSlots } from '../ai/tasks'
 import { saveProject } from '../project'
 import { runSingleStage, pushProject } from './runner'
 import { getSettingsStore } from '../settings'
+
+// NOTE ON TIME DOMAINS: selection regions from the timeline/transcript, every
+// EDL event, and the transcript itself are ALL in SOURCE time (see
+// shared/timemap.ts), so every comparison in this file is domain-consistent.
 
 export async function submitRevision(
   project: Project,
@@ -74,12 +77,16 @@ async function applyAction(project: Project, action: RevisionAction): Promise<vo
           overlaps(c, region) ? { ...c, status: 'rejected' as const, origin: 'ai-revision' as const } : c
         )
       } else {
-        const factor = mode === 'tighten' ? 0.6 : 1.4 // widen/narrow the kept pad
+        // Symmetric fixed step derived from the configured keep-pad, so
+        // tighten and loosen are exact inverses (no drift on repeated nudges).
+        const stepSec = Math.max(0.08, getSettingsStore().getSettings().silence.keepPadMs / 1000)
+        const delta = mode === 'tighten' ? stepSec : -stepSec // tighten = cut MORE
         edl.cuts = edl.cuts.map((c) => {
-          if (!overlaps(c, region)) return c
-          const mid = (c.start + c.end) / 2
-          const half = ((c.end - c.start) / 2) * (mode === 'tighten' ? 1.25 : 0.75)
-          return { ...c, start: Math.max(0, mid - half), end: mid + half, origin: 'ai-revision' as const, note: `${mode} (×${factor})` }
+          if (!overlaps(c, region) || c.status === 'rejected') return c
+          const start = Math.max(0, c.start - delta)
+          const end = c.end + delta
+          if (end - start < 0.08) return c // would collapse — leave as-is
+          return { ...c, start, end, origin: 'ai-revision' as const, note: `${mode} (${delta > 0 ? '+' : ''}${(delta * 1000).toFixed(0)}ms each side)` }
         })
       }
       break

@@ -73,16 +73,20 @@ function buildMenu(win: BrowserWindow): void {
         {
           label: 'Check for Updates…',
           click: async () => {
+            // Reuse the queue panel for visible feedback: running → result.
+            const send = (status: 'running' | 'done' | 'error', label: string) =>
+              win.webContents.send(IPC.queueEvent, {
+                id: 'update-check',
+                kind: 'probe',
+                label,
+                projectId: '',
+                status,
+                progress: status === 'running' ? -1 : 1,
+                createdAt: new Date().toISOString()
+              })
+            send('running', 'Checking for updates…')
             const result = await checkForUpdates()
-            win.webContents.send(IPC.queueEvent, {
-              id: 'update-check',
-              kind: 'probe',
-              label: result.message,
-              projectId: '',
-              status: result.status === 'error' ? 'error' : 'done',
-              progress: 1,
-              createdAt: new Date().toISOString()
-            })
+            send(result.status === 'error' ? 'error' : 'done', result.message)
           }
         }
       ]

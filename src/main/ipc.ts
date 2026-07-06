@@ -9,7 +9,17 @@ import type { AppSettings, EDL, GraphicEvent, StageId, TimeRegion } from '@share
 import * as projects from './project'
 import { getSettingsStore, type SecretName } from './settings'
 import { renderQueue, enqueueAndWait } from './queue'
-import { runFullPipeline, runSingleStage, approveGraphicsAndRender, transcriptEstimate, pushProject, keepSegments } from './pipeline/runner'
+import {
+  runFullPipeline,
+  runSingleStage,
+  replanGraphics,
+  approveGraphicsAndRender,
+  transcriptEstimate,
+  pushProject,
+  keepSegments,
+  latestArtifact,
+  markStaleForEdlChange
+} from './pipeline/runner'
 import { submitRevision } from './pipeline/revisions'
 import { exportFinal } from './media/render'
 import { buildAssFile } from './media/captions'
@@ -41,7 +51,10 @@ export function registerIpc(): void {
 
   ipcMain.handle(IPC.pipelineRunStage, async (_e, projectId: string, stage: StageId, region?: TimeRegion) => {
     const project = projects.openProject(projectId)
-    runSingleStage(project, stage, region).catch((err) => console.error('[stage]', err))
+    // Explicit stage-4 re-run = fresh AI plan behind the approval gate;
+    // revisions go through runSingleStage which re-renders without re-planning.
+    const run = stage === 'graphics' ? replanGraphics(project) : runSingleStage(project, stage, region)
+    run.catch((err) => console.error('[stage]', err))
   })
 
   ipcMain.handle(IPC.pipelineApproveGraphics, async (_e, projectId: string, approvedIds: string[], edits: GraphicEvent[]) => {
@@ -54,7 +67,10 @@ export function registerIpc(): void {
   // -- EDL / revisions -------------------------------------------------------
   ipcMain.handle(IPC.edlUpdate, (_e, projectId: string, edl: EDL) => {
     const project = projects.openProject(projectId)
+    const before = project.edl
     project.edl = { ...edl, version: project.edl.version + 1 }
+    // Manual edits invalidate downstream renders exactly like stage re-runs.
+    markStaleForEdlChange(project, before, project.edl)
     return projects.saveProject(project)
   })
 
@@ -75,11 +91,7 @@ export function registerIpc(): void {
     const project = projects.openProject(projectId)
     const preset = EXPORT_PRESETS.find((p) => p.id === presetId)
     if (!preset) throw new Error(`Unknown export preset "${presetId}".`)
-    const base =
-      project.stages['audio'].artifactPath ??
-      project.stages['graphics'].artifactPath ??
-      project.stages['transitions'].artifactPath ??
-      project.stages['cut-review'].artifactPath
+    const base = latestArtifact(project, 'audio')
     if (!base) throw new Error('Nothing to export yet — run the pipeline first.')
 
     enqueueAndWait('final-export', `Final export: ${preset.label}`, project.id, async (ctx) => {

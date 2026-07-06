@@ -8,6 +8,7 @@
  * Transcription is NOT routed here — it is pinned to OpenAI Whisper
  * (see transcription/whisper.ts).
  */
+import { apiError } from '../net'
 
 export interface AIRequest {
   system: string
@@ -101,20 +102,4 @@ export function makeOpenAIProvider(apiKey: string): AIProvider {
 
 export function makeDeepSeekProvider(apiKey: string): AIProvider {
   return new OpenAICompatibleProvider('deepseek', 'DeepSeek', 'https://api.deepseek.com/v1', apiKey, 'deepseek-chat')
-}
-
-async function apiError(label: string, res: Response): Promise<Error> {
-  let detail = ''
-  try {
-    detail = (await res.text()).slice(0, 300)
-  } catch {
-    /* ignore */
-  }
-  if (res.status === 401 || res.status === 403) {
-    return new Error(`${label} rejected the API key. Check it in Settings → API Keys.`)
-  }
-  if (res.status === 429) {
-    return new Error(`${label} rate limit hit. Wait a moment and try again.`)
-  }
-  return new Error(`${label} request failed (${res.status}). ${detail}`)
 }

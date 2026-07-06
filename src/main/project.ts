@@ -18,6 +18,14 @@ function projectsRoot(): string {
   return dir
 }
 
+/**
+ * In-memory registry: ONE canonical Project object per id. Long-running
+ * pipeline jobs and IPC handlers must mutate the same instance — re-reading
+ * project.json per request would create diverging snapshots that clobber
+ * each other on save (last-writer-wins data loss).
+ */
+const live = new Map<string, Project>()
+
 function emptyEdl(): EDL {
   const brand = getSettingsStore().getSettings().brandKit
   return {
@@ -68,6 +76,7 @@ export async function createProject(name: string, sourcePath: string): Promise<P
     approved: false,
     shorts: []
   }
+  live.set(id, project)
   saveProject(project)
   return project
 }
@@ -76,22 +85,43 @@ export function saveProject(project: Project): Project {
   project.updatedAt = new Date().toISOString()
   const file = path.join(project.workDir, 'project.json')
   const tmp = file + '.tmp'
-  fs.writeFileSync(tmp, JSON.stringify(project, null, 2))
-  fs.renameSync(tmp, file) // atomic-ish write — crash-safe reload
+  // Atomic-ish write with fsync so a crash/power-loss can't leave a
+  // truncated project.json behind the rename.
+  const fd = fs.openSync(tmp, 'w')
+  try {
+    fs.writeFileSync(fd, JSON.stringify(project))
+    fs.fsyncSync(fd)
+  } finally {
+    fs.closeSync(fd)
+  }
+  fs.renameSync(tmp, file)
   saveProjectRow(project)
   return project
 }
 
 export function openProject(id: string): Project {
-  // JSON file is the source of truth; SQLite row is the fallback.
+  // One canonical in-memory instance per id (see `live` above).
+  const cached = live.get(id)
+  if (cached) return cached
+
+  // JSON file is the source of truth; the SQLite row is the recovery path
+  // for a missing OR corrupt file (e.g. truncated by power loss).
   const workDir = path.join(projectsRoot(), id)
   const file = path.join(workDir, 'project.json')
+  let project: Project | null = null
   if (fs.existsSync(file)) {
-    return JSON.parse(fs.readFileSync(file, 'utf-8'))
+    try {
+      project = JSON.parse(fs.readFileSync(file, 'utf-8'))
+    } catch {
+      console.warn(`[project] ${id}: project.json is corrupt, recovering from database mirror`)
+    }
   }
-  const row = getProjectRow(id)
-  if (row) return row
-  throw new Error('Project not found. It may have been deleted from disk.')
+  project ??= getProjectRow(id)
+  if (!project) {
+    throw new Error('Project not found. Its files may have been deleted from disk.')
+  }
+  live.set(id, project)
+  return project
 }
 
 export function listProjects(): ProjectSummary[] {
@@ -99,6 +129,7 @@ export function listProjects(): ProjectSummary[] {
 }
 
 export function deleteProject(id: string): void {
+  live.delete(id)
   deleteProjectRow(id)
   const workDir = path.join(projectsRoot(), id)
   if (fs.existsSync(workDir)) fs.rmSync(workDir, { recursive: true, force: true })

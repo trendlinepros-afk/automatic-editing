@@ -10,24 +10,23 @@ import { getSettingsStore } from '../settings'
 
 const mock = new MockProvider()
 
+const FACTORIES: Record<Exclude<AIProviderId, 'mock'>, (key: string) => AIProvider> = {
+  gemini: (key) => new GeminiProvider(key),
+  openai: makeOpenAIProvider,
+  deepseek: makeDeepSeekProvider
+}
+
+/** ONE place that decides real-vs-mock: no key for the routed provider →
+ *  mock, and the substitution is logged so silent-mock surprises are
+ *  diagnosable ("why did cut review accept everything?"). */
 function buildProvider(id: AIProviderId): AIProvider {
-  const store = getSettingsStore()
-  switch (id) {
-    case 'gemini': {
-      const key = store.getSecret('gemini')
-      return key ? new GeminiProvider(key) : mock
-    }
-    case 'openai': {
-      const key = store.getSecret('openai')
-      return key ? makeOpenAIProvider(key) : mock
-    }
-    case 'deepseek': {
-      const key = store.getSecret('deepseek')
-      return key ? makeDeepSeekProvider(key) : mock
-    }
-    default:
-      return mock
+  if (id === 'mock') return mock
+  const key = getSettingsStore().getSecret(id)
+  if (!key) {
+    console.warn(`[ai] no ${id} key configured — falling back to mock provider`)
+    return mock
   }
+  return FACTORIES[id](key)
 }
 
 export function providerForTask(task: AITask): AIProvider {

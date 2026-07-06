@@ -1,18 +1,36 @@
 /**
- * Timeline — the review surface. Tracks: cuts (source timeline), transitions,
- * graphics, music (trimmed timeline). Click to seek; drag on the ruler to
- * select a region for a revision instruction; drag cut edges to adjust
- * in/out points manually (writes to the EDL like any other edit).
+ * Timeline — the review surface, drawn entirely in SOURCE time (the domain
+ * every EDL event is stored in). The preview video plays the TRIMMED
+ * timeline, so exactly two conversions happen here:
+ *   - click-to-seek: source → trimmed before seeking the video
+ *   - playhead: trimmed (video clock) → source for display
+ *
+ * Tracks: cuts, transitions+graphics (FX), music. Click to seek; drag on the
+ * ruler to select a region for a revision instruction; drag cut edges to
+ * adjust in/out points manually (one undoable EDL edit per drag).
  */
-import { useRef, useState, type MouseEvent } from 'react'
+import { useMemo, useRef, useState, type MouseEvent } from 'react'
 import { useStore, formatTime } from '../state/store'
+import { cutsToKeepSegments, sourceToTrimmedTime, trimmedToSourceTime } from '@shared/timemap'
 import type { CutRegion } from '@shared/types'
+
+type Drag =
+  | { kind: 'select'; from: number; to: number }
+  | { kind: 'cut-edge'; id: string; edge: 'start' | 'end'; t: number }
+  | null
 
 export default function Timeline() {
   const { project, currentTime, seek, selection, setSelection, mutateEdl } = useStore()
   const trackRef = useRef<HTMLDivElement>(null)
-  const [dragSel, setDragSel] = useState<{ from: number; to: number } | null>(null)
-  const [dragCut, setDragCut] = useState<{ id: string; edge: 'start' | 'end' } | null>(null)
+  const [drag, setDrag] = useState<Drag>(null)
+
+  const keep = useMemo(
+    () =>
+      project
+        ? (project.trimKeep ?? cutsToKeepSegments(project.edl.cuts, project.source.durationSec))
+        : [],
+    [project?.trimKeep, project?.edl.version, project?.source.durationSec]
+  )
 
   if (!project) return null
   const duration = project.source.durationSec || 1
@@ -22,56 +40,56 @@ export default function Timeline() {
     return Math.min(duration, Math.max(0, ((clientX - rect.left) / rect.width) * duration))
   }
   const pct = (t: number) => `${(t / duration) * 100}%`
-  const widthPct = (a: number, b: number) => `${((b - a) / duration) * 100}%`
+  const widthPct = (a: number, b: number) => `${(Math.max(0, b - a) / duration) * 100}%`
 
   function onRulerDown(e: MouseEvent) {
     const from = pxToTime(e.clientX)
-    setDragSel({ from, to: from })
+    setDrag({ kind: 'select', from, to: from })
   }
   function onMove(e: MouseEvent) {
-    if (dragSel) setDragSel({ ...dragSel, to: pxToTime(e.clientX) })
-    if (dragCut) {
-      const t = pxToTime(e.clientX)
-      mutateNoHistory(dragCut, t)
-    }
+    if (!drag) return
+    const t = pxToTime(e.clientX)
+    setDrag(drag.kind === 'select' ? { ...drag, to: t } : { ...drag, t })
   }
   function onUp(e: MouseEvent) {
-    if (dragSel) {
-      const a = Math.min(dragSel.from, dragSel.to)
-      const b = Math.max(dragSel.from, dragSel.to)
+    if (!drag) return
+    const t = pxToTime(e.clientX)
+    if (drag.kind === 'select') {
+      const a = Math.min(drag.from, t)
+      const b = Math.max(drag.from, t)
       if (b - a < 0.15) {
-        seek(a)
+        // Plain click: seek the preview (convert source → trimmed).
+        seek(sourceToTrimmedTime(a, keep))
         setSelection({ region: null })
       } else {
         setSelection({ region: { start: a, end: b } })
       }
-      setDragSel(null)
-    }
-    if (dragCut) {
-      const t = pxToTime(e.clientX)
-      const { id, edge } = dragCut
-      setDragCut(null)
-      // Commit the drag as one undoable EDL mutation.
+    } else {
+      // Commit the edge drag as ONE undoable EDL mutation.
+      const { id, edge } = drag
       mutateEdl((edl) => ({
         ...edl,
         cuts: edl.cuts.map((c) => (c.id === id ? clampCut({ ...c, [edge]: t, origin: 'manual' as const }) : c))
       }))
     }
+    setDrag(null)
   }
-
-  // During drag we don't spam undo history — visual feedback only via local state.
-  const [liveCut, setLiveCut] = useState<{ id: string; start?: number; end?: number } | null>(null)
-  function mutateNoHistory(drag: { id: string; edge: 'start' | 'end' }, t: number) {
-    setLiveCut({ id: drag.id, [drag.edge]: t })
+  // Leaving mid-gesture cancels it — no half-armed drags on re-entry.
+  function onLeave() {
+    setDrag(null)
   }
 
   const cuts = project.edl.cuts.filter((c) => c.status !== 'rejected')
-  const sel = dragSel
-    ? { start: Math.min(dragSel.from, dragSel.to), end: Math.max(dragSel.from, dragSel.to) }
-    : selection.region
+  const sel =
+    drag?.kind === 'select'
+      ? { start: Math.min(drag.from, drag.to), end: Math.max(drag.from, drag.to) }
+      : selection.region
+
+  // Playhead: the video reports trimmed time; display it in source time.
+  const playheadSrc = trimmedToSourceTime(currentTime, keep)
 
   return (
-    <div className="panel p-3 select-none" onMouseMove={onMove} onMouseUp={onUp} onMouseLeave={() => setDragSel(null)}>
+    <div className="panel p-3 select-none" onMouseMove={onMove} onMouseUp={onUp} onMouseLeave={onLeave}>
       <div className="flex items-center justify-between mb-2 text-xs text-ink-400">
         <span className="font-display font-semibold text-ink-200">Timeline</span>
         <span>
@@ -96,11 +114,12 @@ export default function Timeline() {
           ))}
         </div>
 
-        {/* Cut track (source timeline) */}
+        {/* Cut track */}
         <Track label="Cuts">
           {cuts.map((c) => {
-            const start = liveCut?.id === c.id && liveCut.start !== undefined ? liveCut.start : c.start
-            const end = liveCut?.id === c.id && liveCut.end !== undefined ? liveCut.end : c.end
+            const isDragged = drag?.kind === 'cut-edge' && drag.id === c.id
+            const start = isDragged && drag.edge === 'start' ? drag.t : c.start
+            const end = isDragged && drag.edge === 'end' ? drag.t : c.end
             return (
               <div
                 key={c.id}
@@ -108,18 +127,17 @@ export default function Timeline() {
                 className={`absolute top-0.5 bottom-0.5 rounded-sm ${
                   c.status === 'proposed' ? 'bg-cut/30 border border-cut/50' : 'bg-cut/60'
                 }`}
-                style={{ left: pct(start), width: widthPct(start, end) }}
+                style={{ left: pct(Math.min(start, end)), width: widthPct(Math.min(start, end), Math.max(start, end)) }}
                 onMouseDown={(e) => e.stopPropagation()}
               >
-                <Edge onDown={() => setDragCut({ id: c.id, edge: 'start' })} side="left" />
-                <Edge onDown={() => setDragCut({ id: c.id, edge: 'end' })} side="right" />
+                <Edge onDown={() => setDrag({ kind: 'cut-edge', id: c.id, edge: 'start', t: c.start })} side="left" />
+                <Edge onDown={() => setDrag({ kind: 'cut-edge', id: c.id, edge: 'end', t: c.end })} side="right" />
               </div>
             )
           })}
         </Track>
 
-        {/* Transitions + graphics + music (trimmed-timeline events, shown on the
-            same scale for review; exact alignment appears in the preview) */}
+        {/* Transitions + graphics — source-anchored, same scale as the ruler */}
         <Track label="FX">
           {project.edl.transitions.map((t) => (
             <div
@@ -163,7 +181,7 @@ export default function Timeline() {
         {/* Playhead */}
         <div
           className="absolute -top-1 bottom-0 w-0.5 bg-signal pointer-events-none shadow-[0_0_8px_rgba(94,234,212,0.7)]"
-          style={{ left: pct(Math.min(currentTime, duration)) }}
+          style={{ left: pct(Math.min(playheadSrc, duration)) }}
         >
           <div className="w-2.5 h-2.5 bg-signal rotate-45 -translate-x-1 -translate-y-0.5" />
         </div>

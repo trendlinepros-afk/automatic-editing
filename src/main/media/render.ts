@@ -6,8 +6,8 @@
 import path from 'path'
 import fs from 'fs'
 import { runFFmpeg, hasNvenc, type RunOptions } from './ffmpeg'
-import { cutsToKeepSegments } from './silence'
-import type { EDL, ExportPreset, Project, TimeRegion, TransitionEvent } from '@shared/types'
+import { cutsToKeepSegments, sourceToTrimmedTime } from '@shared/timemap'
+import type { ExportPreset, Project, TimeRegion } from '@shared/types'
 
 // ---------------------------------------------------------------------------
 // Stage 2 output — apply validated cuts → trimmed.mp4
@@ -45,9 +45,14 @@ export async function applyCuts(
 export async function applyTransitions(
   project: Project,
   inPath: string,
+  keep: TimeRegion[],
   opts: RunOptions
 ): Promise<string> {
-  const transitions = project.edl.transitions
+  // EDL stores transitions in SOURCE time; the video being faded is trimmed.
+  const transitions = project.edl.transitions.map((t) => ({
+    ...t,
+    at: sourceToTrimmedTime(t.at, keep)
+  }))
   const outPath = path.join(project.workDir, 'transitions.mp4')
   if (transitions.length === 0) {
     fs.copyFileSync(inPath, outPath)
@@ -60,7 +65,7 @@ export async function applyTransitions(
   const fades: string[] = []
   for (const t of transitions) {
     const half = t.durationSec / 2
-    fades.push(`fade=t=out:st=${(t.at - half).toFixed(3)}:d=${half.toFixed(3)}`)
+    fades.push(`fade=t=out:st=${Math.max(0, t.at - half).toFixed(3)}:d=${half.toFixed(3)}`)
     fades.push(`fade=t=in:st=${t.at.toFixed(3)}:d=${half.toFixed(3)}`)
   }
   await runFFmpeg(
@@ -83,9 +88,15 @@ export async function applyTransitions(
 export async function compositeGraphics(
   project: Project,
   inPath: string,
+  keep: TimeRegion[],
   opts: RunOptions
 ): Promise<string> {
-  const rendered = project.edl.graphics.filter((g) => g.status === 'rendered' && g.renderPath)
+  // EDL stores graphic anchors in SOURCE time; convert to the trimmed
+  // timeline of the video being composited. Graphics whose anchor falls
+  // inside a cut collapse to the cut point and still show.
+  const rendered = project.edl.graphics
+    .filter((g) => g.status === 'rendered' && g.renderPath)
+    .map((g) => ({ ...g, at: sourceToTrimmedTime(g.at, keep) }))
   const outPath = path.join(project.workDir, 'graphics.mp4')
   if (rendered.length === 0) {
     fs.copyFileSync(inPath, outPath)
@@ -94,17 +105,21 @@ export async function compositeGraphics(
   const inputs: string[] = ['-i', inPath]
   for (const g of rendered) inputs.push('-i', g.renderPath!)
 
-  let chain = ''
+  // Each overlay input must be time-shifted to its placement (setpts) or its
+  // frames play at t=0..dur and the enable window would only ever show the
+  // frozen last frame. eof_action=pass drops the overlay once the clip ends.
+  const parts: string[] = []
   let prev = '[0:v]'
   rendered.forEach((g, i) => {
     const idx = i + 1
     const label = i === rendered.length - 1 ? '[vout]' : `[v${idx}]`
-    chain +=
-      `${prev}[${idx}:v]overlay=0:0:enable='between(t,${g.at.toFixed(3)},${(g.at + g.durationSec).toFixed(3)})'` +
-      `${label};`
+    parts.push(`[${idx}:v]setpts=PTS-STARTPTS+${g.at.toFixed(3)}/TB[g${idx}]`)
+    parts.push(
+      `${prev}[g${idx}]overlay=0:0:eof_action=pass:enable='between(t,${g.at.toFixed(3)},${(g.at + g.durationSec).toFixed(3)})'${label}`
+    )
     prev = `[v${idx}]`
   })
-  chain = chain.slice(0, -1)
+  const chain = parts.join(';')
 
   await runFFmpeg(
     [
@@ -127,10 +142,19 @@ export async function compositeGraphics(
 export async function mixAudio(
   project: Project,
   inPath: string,
+  keep: TimeRegion[],
   speechRegions: TimeRegion[],
   opts: RunOptions
 ): Promise<string> {
-  const { music, sfx } = project.edl
+  // EDL stores music/SFX in SOURCE time; convert regions to trimmed time.
+  const music = project.edl.music.map((m) => ({
+    ...m,
+    region: {
+      start: sourceToTrimmedTime(m.region.start, keep),
+      end: sourceToTrimmedTime(m.region.end, keep)
+    }
+  }))
+  const sfx = project.edl.sfx.map((s) => ({ ...s, at: sourceToTrimmedTime(s.at, keep) }))
   const outPath = path.join(project.workDir, 'mixed.mp4')
   if (music.length === 0 && sfx.length === 0) {
     fs.copyFileSync(inPath, outPath)
@@ -151,10 +175,14 @@ export async function mixAudio(
     const duckGain = duckExpr
       ? `volume=volume='if(${duckExpr},${dbToLinear(cue.gainDb + cue.duckDb)},${dbToLinear(cue.gainDb)})':eval=frame`
       : `volume=${dbToLinear(cue.gainDb)}`
+    // Order matters: trim + fade in CUE-LOCAL time first, THEN delay into
+    // place, THEN duck (duck expressions are in output-timeline time).
+    const cueLen = cue.region.end - cue.region.start
+    const delayMs = Math.round(cue.region.start * 1000)
     chains.push(
-      `[${inputIdx}:a]atrim=0:${(cue.region.end - cue.region.start).toFixed(2)},` +
-        `adelay=${Math.round(cue.region.start * 1000)}|${Math.round(cue.region.start * 1000)},` +
-        `afade=t=in:d=${cue.fadeInSec},afade=t=out:st=${Math.max(0, cue.region.end - cue.region.start - cue.fadeOutSec).toFixed(2)}:d=${cue.fadeOutSec},` +
+      `[${inputIdx}:a]atrim=0:${cueLen.toFixed(2)},asetpts=PTS-STARTPTS,` +
+        `afade=t=in:d=${cue.fadeInSec},afade=t=out:st=${Math.max(0, cueLen - cue.fadeOutSec).toFixed(2)}:d=${cue.fadeOutSec},` +
+        `adelay=${delayMs}|${delayMs},` +
         `${duckGain}[m${inputIdx}]`
     )
     mixLabels.push(`[m${inputIdx}]`)

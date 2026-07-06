@@ -25,6 +25,10 @@
       "out/**/*",
       "resources/**/*"
     ],
+    "asarUnpack": [
+      "node_modules/ffmpeg-static/**",
+      "node_modules/ffprobe-static/**"
+    ],
     "win": {
       "target": [
         "nsis"

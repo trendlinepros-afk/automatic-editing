@@ -17,10 +17,21 @@ import type { BrandKit, GraphicEvent } from '@shared/types'
 
 let cliAvailable: boolean | null = null
 
+const HYPERFRAMES_CMD = process.platform === 'win32' ? 'hyperframes.cmd' : 'hyperframes'
+
+/**
+ * The CLI resolves via the shell (needed for .cmd shims on Windows), so every
+ * argument must be quoted — Windows user-profile paths contain spaces
+ * (C:\Users\John Smith\AppData\...).
+ */
+function quoteArgs(args: string[]): string[] {
+  return args.map((a) => (/[\s"']/.test(a) ? `"${a.replace(/"/g, '\\"')}"` : a))
+}
+
 async function hyperframesAvailable(): Promise<boolean> {
   if (cliAvailable !== null) return cliAvailable
   cliAvailable = await new Promise<boolean>((resolve) => {
-    const child = spawn(process.platform === 'win32' ? 'hyperframes.cmd' : 'hyperframes', ['--version'], {
+    const child = spawn(HYPERFRAMES_CMD, ['--version'], {
       windowsHide: true,
       shell: true
     })
@@ -57,15 +68,15 @@ export async function renderGraphic(
 
   if (await hyperframesAvailable()) {
     await new Promise<void>((resolve, reject) => {
-      const args = [
+      const args = quoteArgs([
         'render', htmlPath,
         '--out', outPath,
         '--width', '1920', '--height', '1080',
         '--fps', '30',
         '--duration', String(graphic.durationSec),
         '--alpha'
-      ]
-      const child = spawn(process.platform === 'win32' ? 'hyperframes.cmd' : 'hyperframes', args, {
+      ])
+      const child = spawn(HYPERFRAMES_CMD, args, {
         windowsHide: true,
         shell: true
       })

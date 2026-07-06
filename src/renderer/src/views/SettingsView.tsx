@@ -44,6 +44,15 @@ function Section({ title, hint, children }: { title: string; hint?: string; chil
   )
 }
 
+function Row({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="flex items-center gap-2">
+      <span className="w-72 text-sm text-ink-300 shrink-0">{label}</span>
+      {children}
+    </div>
+  )
+}
+
 // ---------------------------------------------------------------------------
 
 function ApiKeys() {
@@ -90,71 +99,73 @@ function ApiKeys() {
 }
 
 function Routing() {
-  const { settings, refreshSettings } = useStore()
+  const { settings, saveSettings } = useStore()
   if (!settings) return null
   return (
-    <Section title="AI routing" hint="Per-task provider. Default is Gemini. Transcription is pinned to OpenAI Whisper and is not routable.">
+    <Section title="AI routing" hint="Per-task provider. Default is Gemini. Transcription is pinned to OpenAI Whisper and is not routable. A task whose provider has no key runs in mock mode.">
       {TASKS.map((t) => (
-        <div key={t.id} className="flex items-center gap-2">
-          <span className="w-72 text-sm text-ink-300 shrink-0">{t.label}</span>
+        <Row key={t.id} label={t.label}>
           <select
             className="input !w-44"
             value={settings.routing.taskProviders[t.id]}
-            onChange={async (e) => {
-              await window.wickedcut.updateSettings({
+            onChange={(e) =>
+              saveSettings({
                 routing: {
                   taskProviders: { ...settings.routing.taskProviders, [t.id]: e.target.value as AIProviderId }
                 }
               })
-              refreshSettings()
-            }}
+            }
           >
             {PROVIDERS.map((p) => (
               <option key={p} value={p}>
                 {p}
+                {!settings.keysPresent[p as 'gemini' | 'openai' | 'deepseek'] ? ' (no key → mock)' : ''}
               </option>
             ))}
           </select>
-        </div>
+        </Row>
       ))}
     </Section>
   )
 }
 
 function PipelineTuning() {
-  const { settings, refreshSettings } = useStore()
+  const { settings, saveSettings } = useStore()
   if (!settings) return null
-  const num = (v: string) => Number(v)
+  const num = (v: string, fallback: number) => {
+    const n = Number(v)
+    return Number.isFinite(n) ? n : fallback
+  }
   return (
     <Section title="Pipeline tuning">
       <Row label="Silence threshold (dB)">
         <input
           className="input !w-28" type="number" defaultValue={settings.silence.thresholdDb}
-          onBlur={async (e) => { await window.wickedcut.updateSettings({ silence: { ...settings.silence, thresholdDb: num(e.target.value) } }); refreshSettings() }}
+          onBlur={(e) => saveSettings({ silence: { ...settings.silence, thresholdDb: num(e.target.value, -35) } })}
         />
       </Row>
       <Row label="Min silence duration (s)">
         <input
           className="input !w-28" type="number" step="0.1" defaultValue={settings.silence.minSilenceSec}
-          onBlur={async (e) => { await window.wickedcut.updateSettings({ silence: { ...settings.silence, minSilenceSec: num(e.target.value) } }); refreshSettings() }}
+          onBlur={(e) => saveSettings({ silence: { ...settings.silence, minSilenceSec: num(e.target.value, 0.6) } })}
         />
       </Row>
       <Row label="Keep-pad (ms)">
         <input
           className="input !w-28" type="number" defaultValue={settings.silence.keepPadMs}
-          onBlur={async (e) => { await window.wickedcut.updateSettings({ silence: { ...settings.silence, keepPadMs: num(e.target.value) } }); refreshSettings() }}
+          onBlur={(e) => saveSettings({ silence: { ...settings.silence, keepPadMs: num(e.target.value, 150) } })}
         />
       </Row>
       <Row label="Scene threshold (0–1)">
         <input
           className="input !w-28" type="number" step="0.05" defaultValue={settings.scene.threshold}
-          onBlur={async (e) => { await window.wickedcut.updateSettings({ scene: { ...settings.scene, threshold: num(e.target.value) } }); refreshSettings() }}
+          onBlur={(e) => saveSettings({ scene: { ...settings.scene, threshold: num(e.target.value, 0.4) } })}
         />
       </Row>
       <Row label="Default transition">
         <select
           className="input !w-44" value={settings.scene.defaultTransition}
-          onChange={async (e) => { await window.wickedcut.updateSettings({ scene: { ...settings.scene, defaultTransition: e.target.value as any } }); refreshSettings() }}
+          onChange={(e) => saveSettings({ scene: { ...settings.scene, defaultTransition: e.target.value as any } })}
         >
           <option value="crossfade">crossfade</option>
           <option value="dip-to-black">dip-to-black</option>
@@ -163,7 +174,7 @@ function PipelineTuning() {
       <Row label="Prefer NVENC (GPU) encoding">
         <input
           type="checkbox" checked={settings.export.preferNvenc} className="accent-[#5eead4]"
-          onChange={async (e) => { await window.wickedcut.updateSettings({ export: { preferNvenc: e.target.checked } }); refreshSettings() }}
+          onChange={(e) => saveSettings({ export: { preferNvenc: e.target.checked } })}
         />
       </Row>
     </Section>
@@ -171,13 +182,10 @@ function PipelineTuning() {
 }
 
 function BrandKitPanel() {
-  const { settings, refreshSettings } = useStore()
+  const { settings, saveSettings } = useStore()
   if (!settings) return null
   const bk = settings.brandKit
-  const save = async (patch: Partial<typeof bk>) => {
-    await window.wickedcut.updateSettings({ brandKit: { ...bk, ...patch } })
-    refreshSettings()
-  }
+  const save = (patch: Partial<typeof bk>) => saveSettings({ brandKit: { ...bk, ...patch } })
   return (
     <Section title="Brand kit" hint="Every generated graphic AND every caption pulls from here, so output stays consistent.">
       <Row label="Display font">
@@ -239,14 +247,11 @@ function BrandKitPanel() {
 }
 
 function Libraries() {
-  const { settings, refreshSettings } = useStore()
+  const { settings, saveSettings } = useStore()
   if (!settings) return null
   const pick = async (key: 'musicLibraryDir' | 'sfxLibraryDir') => {
     const dir = await window.wickedcut.pickDirectory()
-    if (dir) {
-      await window.wickedcut.updateSettings({ [key]: dir })
-      refreshSettings()
-    }
+    if (dir) saveSettings({ [key]: dir })
   }
   return (
     <Section title="Music & SFX libraries" hint="Point at local folders. Stage 5 lays background music from the music library and ducks it under speech automatically.">
@@ -263,14 +268,11 @@ function Libraries() {
 }
 
 function HostingPanel() {
-  const { settings, refreshSettings } = useStore()
+  const { settings, saveSettings, refreshSettings } = useStore()
   const [creds, setCreds] = useState({ access: '', secret: '' })
   if (!settings) return null
   const h = settings.hosting
-  const save = async (patch: Partial<typeof h>) => {
-    await window.wickedcut.updateSettings({ hosting: { ...h, ...patch } })
-    refreshSettings()
-  }
+  const save = (patch: Partial<typeof h>) => saveSettings({ hosting: { ...h, ...patch } })
   return (
     <Section
       title="Final video hosting (required for Shorts)"
@@ -296,7 +298,7 @@ function HostingPanel() {
 }
 
 function OpusClipPanel() {
-  const { settings, refreshSettings } = useStore()
+  const { settings, saveSettings } = useStore()
   if (!settings) return null
   return (
     <Section
@@ -306,13 +308,13 @@ function OpusClipPanel() {
       <Row label="Brand template ID">
         <input
           className="input" defaultValue={settings.opusclip.brandTemplateId ?? ''} placeholder="from your OpusClip dashboard"
-          onBlur={async (e) => { await window.wickedcut.updateSettings({ opusclip: { ...settings.opusclip, brandTemplateId: e.target.value || undefined } }); refreshSettings() }}
+          onBlur={(e) => saveSettings({ opusclip: { ...settings.opusclip, brandTemplateId: e.target.value || undefined } })}
         />
       </Row>
       <Row label="Webhook URL (optional)">
         <input
           className="input" defaultValue={settings.opusclip.webhookUrl ?? ''} placeholder="left empty → WickedCut polls for results"
-          onBlur={async (e) => { await window.wickedcut.updateSettings({ opusclip: { ...settings.opusclip, webhookUrl: e.target.value || undefined } }); refreshSettings() }}
+          onBlur={(e) => saveSettings({ opusclip: { ...settings.opusclip, webhookUrl: e.target.value || undefined } })}
         />
       </Row>
     </Section>
@@ -333,6 +335,12 @@ function Updates() {
             setResult(null)
             try {
               setResult(await window.wickedcut.checkForUpdates())
+            } catch (err: any) {
+              setResult({
+                status: 'error',
+                currentVersion: '',
+                message: err?.message ?? 'Update check failed unexpectedly. Try again.'
+              })
             } finally {
               setChecking(false)
             }
@@ -350,14 +358,5 @@ function Updates() {
         <p className={`text-xs ${result.status === 'error' ? 'text-cut' : 'text-ink-400'}`}>{result.message}</p>
       )}
     </Section>
-  )
-}
-
-function Row({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div className="flex items-center gap-2">
-      <span className="w-72 text-sm text-ink-300 shrink-0">{label}</span>
-      {children}
-    </div>
   )
 }

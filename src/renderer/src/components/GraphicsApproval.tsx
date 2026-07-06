@@ -2,30 +2,44 @@
  * Stage 4 approval gate — the AI's graphic plan is presented BEFORE any
  * HyperFrames rendering. The user can edit slot text, toggle each graphic,
  * then approve; only approved graphics render (protects render time and
- * API budget).
+ * API budget). The modal closes as soon as approval is submitted — the main
+ * process flips the stage out of 'awaiting-approval' immediately.
  */
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useStore, formatTime } from '../state/store'
 import type { GraphicEvent } from '@shared/types'
+
+type Item = GraphicEvent & { approved: boolean }
 
 export default function GraphicsApproval() {
   const project = useStore((s) => s.project)
   const planned = project?.edl.graphics.filter((g) => g.status === 'planned') ?? []
-  const [drafts, setDrafts] = useState<GraphicEvent[] | null>(null)
+  // ONE local list: plan + approval flag together. Synced against the store
+  // if a push changes the planned set while the modal is open.
+  const [items, setItems] = useState<Item[]>(() => planned.map((g) => ({ ...g, approved: true })))
   const [submitting, setSubmitting] = useState(false)
-  const [approvedIds, setApprovedIds] = useState<string[]>(() => planned.map((g) => g.id))
+
+  const plannedKey = planned.map((g) => g.id).join(',')
+  useEffect(() => {
+    setItems((cur) => {
+      const curById = new Map(cur.map((i) => [i.id, i]))
+      return planned.map((g) => curById.get(g.id) ?? { ...g, approved: true })
+    })
+  }, [plannedKey])
+
   if (!project) return null
 
-  const items = drafts ?? planned
-
   function updateSlot(id: string, slot: string, value: string) {
-    setDrafts((cur) => (cur ?? planned).map((g) => (g.id === id ? { ...g, slots: { ...g.slots, [slot]: value } } : g)))
+    setItems((cur) => cur.map((g) => (g.id === id ? { ...g, slots: { ...g.slots, [slot]: value } } : g)))
   }
 
-  async function approve() {
+  async function submit(approvedIds: string[]) {
     setSubmitting(true)
-    await window.wickedcut.approveGraphics(project!.id, approvedIds, items)
+    const edits = items.map(({ approved, ...g }) => g)
+    await window.wickedcut.approveGraphics(project!.id, approvedIds, edits)
   }
+
+  const approvedCount = items.filter((g) => g.approved).length
 
   return (
     <div className="fixed inset-0 bg-ink-950/80 flex items-center justify-center z-50 p-8">
@@ -40,13 +54,13 @@ export default function GraphicsApproval() {
         <div className="flex-1 overflow-y-auto p-4 space-y-3">
           {items.length === 0 && <p className="text-sm text-ink-500">The AI planned no graphics for this video.</p>}
           {items.map((g) => (
-            <div key={g.id} className={`panel bg-ink-850 p-3 ${approvedIds.includes(g.id) ? '' : 'opacity-50'}`}>
+            <div key={g.id} className={`panel bg-ink-850 p-3 ${g.approved ? '' : 'opacity-50'}`}>
               <div className="flex items-center gap-2 mb-2">
                 <input
                   type="checkbox"
-                  checked={approvedIds.includes(g.id)}
+                  checked={g.approved}
                   onChange={(e) =>
-                    setApprovedIds((cur) => (e.target.checked ? [...cur, g.id] : cur.filter((x) => x !== g.id)))
+                    setItems((cur) => cur.map((x) => (x.id === g.id ? { ...x, approved: e.target.checked } : x)))
                   }
                   className="accent-[#5eead4]"
                 />
@@ -68,15 +82,15 @@ export default function GraphicsApproval() {
           ))}
         </div>
         <div className="p-4 border-t border-ink-700 flex justify-end gap-2">
-          <button
-            className="btn"
-            disabled={submitting}
-            onClick={() => window.wickedcut.approveGraphics(project.id, [], items)}
-          >
+          <button className="btn" disabled={submitting} onClick={() => submit([])}>
             Skip all graphics
           </button>
-          <button className="btn btn-primary" disabled={submitting} onClick={approve}>
-            {submitting ? 'Rendering…' : `Approve ${approvedIds.length} & render`}
+          <button
+            className="btn btn-primary"
+            disabled={submitting}
+            onClick={() => submit(items.filter((g) => g.approved).map((g) => g.id))}
+          >
+            {submitting ? 'Starting render…' : `Approve ${approvedCount} & render`}
           </button>
         </div>
       </div>

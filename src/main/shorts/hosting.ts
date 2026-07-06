@@ -40,9 +40,17 @@ export class S3Host implements FinalVideoHost {
 
     const key = `wickedcut/${Date.now()}-${path.basename(filePath)}`
     onProgress?.(0.05)
-    const body = fs.readFileSync(filePath)
+    // Stream from disk — final renders can be multi-GB; buffering the whole
+    // file would block the main process and can OOM.
+    const { size } = fs.statSync(filePath)
     await client.send(
-      new PutObjectCommand({ Bucket: settings.bucket, Key: key, Body: body, ContentType: 'video/mp4' }),
+      new PutObjectCommand({
+        Bucket: settings.bucket,
+        Key: key,
+        Body: fs.createReadStream(filePath),
+        ContentLength: size,
+        ContentType: 'video/mp4'
+      }),
       { abortSignal: signal }
     )
     onProgress?.(0.9)

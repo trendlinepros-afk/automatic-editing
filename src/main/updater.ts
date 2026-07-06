@@ -3,11 +3,47 @@
  * checkForUpdates(); electron-updater checks GitHub Releases, downloads in
  * the background, and installUpdate() relaunches into the new version.
  * In dev (unpackaged) it reports dev-mode instead of erroring.
+ *
+ * Robustness notes:
+ *  - Uses result.isUpdateAvailable + result.downloadPromise (the canonical
+ *    electron-updater contract) instead of version-string comparison.
+ *  - autoUpdater is an EventEmitter; an unhandled 'error' event would crash
+ *    the main process, so a persistent no-op listener is attached once.
+ *  - Concurrent clicks share one in-flight check instead of double-checking.
  */
 import { app } from 'electron'
 import type { UpdateCheckResult } from '@shared/types'
 
-export async function checkForUpdates(): Promise<UpdateCheckResult> {
+let updaterReady = false
+let downloadedVersion: string | null = null
+let inFlight: Promise<UpdateCheckResult> | null = null
+
+async function getUpdater() {
+  const { autoUpdater } = await import('electron-updater')
+  if (!updaterReady) {
+    updaterReady = true
+    autoUpdater.autoDownload = true
+    autoUpdater.autoInstallOnAppQuit = true
+    // Never let a background updater error crash the app (EventEmitter throws
+    // on unhandled 'error'). Individual checks still surface errors below.
+    autoUpdater.on('error', (err) => console.warn('[updater]', err?.message ?? err))
+    autoUpdater.on('update-downloaded', (info) => {
+      downloadedVersion = info?.version ?? downloadedVersion
+    })
+  }
+  return autoUpdater
+}
+
+export function checkForUpdates(): Promise<UpdateCheckResult> {
+  // Share one in-flight check across the Settings button and the Help menu.
+  if (inFlight) return inFlight
+  inFlight = doCheck().finally(() => {
+    inFlight = null
+  })
+  return inFlight
+}
+
+async function doCheck(): Promise<UpdateCheckResult> {
   const currentVersion = app.getVersion()
   if (!app.isPackaged) {
     return {
@@ -17,42 +53,62 @@ export async function checkForUpdates(): Promise<UpdateCheckResult> {
     }
   }
   try {
-    const { autoUpdater } = await import('electron-updater')
-    autoUpdater.autoDownload = true
-    autoUpdater.autoInstallOnAppQuit = true
+    const autoUpdater = await getUpdater()
+
+    // Already downloaded earlier this session? Offer install immediately.
+    if (downloadedVersion) {
+      return {
+        status: 'downloaded',
+        currentVersion,
+        latestVersion: downloadedVersion,
+        message: `Version ${downloadedVersion} is downloaded and ready. Click "Restart & install" to update now.`
+      }
+    }
 
     const result = await autoUpdater.checkForUpdates()
-    const latest = result?.updateInfo?.version
-    if (!latest || latest === currentVersion) {
+    if (!result || !result.isUpdateAvailable) {
       return {
         status: 'up-to-date',
         currentVersion,
         message: `You're on the latest version (v${currentVersion}).`
       }
     }
-    // autoDownload is on — wait for the download so Install can be offered.
-    await new Promise<void>((resolve) => {
-      autoUpdater.once('update-downloaded', () => resolve())
-      autoUpdater.once('error', () => resolve())
-      // If it was already downloaded this session, don't hang.
-      setTimeout(resolve, 120000)
-    })
+
+    const latest = result.updateInfo.version
+    if (result.downloadPromise) {
+      // autoDownload is on — downloadPromise resolves when the update is on disk.
+      await result.downloadPromise
+      downloadedVersion = latest
+      return {
+        status: 'downloaded',
+        currentVersion,
+        latestVersion: latest,
+        message: `Version ${latest} downloaded. Click "Restart & install" to update now, or it installs on next quit.`
+      }
+    }
     return {
-      status: 'downloaded',
+      status: 'update-available',
       currentVersion,
       latestVersion: latest,
-      message: `Version ${latest} downloaded. Click "Restart & install" to update now, or it installs on next quit.`
+      message: `Version ${latest} is available and will download in the background.`
     }
   } catch (err: any) {
+    const detail = String(err?.message ?? err)
+    const hint = detail.includes('404')
+      ? ' (No published release found — make sure a GitHub Release with installer assets exists, and that the repo is reachable.)'
+      : ''
     return {
       status: 'error',
       currentVersion,
-      message: `Update check failed: ${err?.message ?? err}. Check your connection and try again.`
+      message: `Update check failed: ${detail}${hint} Check your connection and try again.`
     }
   }
 }
 
 export async function installUpdate(): Promise<void> {
-  const { autoUpdater } = await import('electron-updater')
+  if (!downloadedVersion) {
+    throw new Error('No update has been downloaded yet. Run "Check for updates" first.')
+  }
+  const autoUpdater = await getUpdater()
   autoUpdater.quitAndInstall()
 }

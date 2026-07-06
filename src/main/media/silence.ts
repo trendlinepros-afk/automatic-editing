@@ -63,29 +63,6 @@ export function silencesToCuts(silences: TimeRegion[], opts: SilenceOptions): Cu
   return cuts
 }
 
-/** Invert validated cuts into keep-segments over [0, durationSec]. */
-export function cutsToKeepSegments(cuts: CutRegion[], durationSec: number): TimeRegion[] {
-  const active = cuts
-    .filter((c) => c.status === 'validated')
-    .slice()
-    .sort((a, b) => a.start - b.start)
-  const keep: TimeRegion[] = []
-  let cursor = 0
-  for (const c of active) {
-    if (c.start > cursor) keep.push({ start: cursor, end: Math.min(c.start, durationSec) })
-    cursor = Math.max(cursor, c.end)
-  }
-  if (cursor < durationSec) keep.push({ start: cursor, end: durationSec })
-  return keep.filter((k) => k.end - k.start > 0.04)
-}
-
-/** Map a source-timeline second onto the trimmed timeline (after cuts). */
-export function sourceToTrimmedTime(t: number, keep: TimeRegion[]): number {
-  let acc = 0
-  for (const k of keep) {
-    if (t <= k.start) return acc
-    if (t <= k.end) return acc + (t - k.start)
-    acc += k.end - k.start
-  }
-  return acc
-}
+// Keep-segment / time-domain math lives in @shared/timemap so the renderer
+// uses the exact same conversions (playhead, transcript seeking).
+export { cutsToKeepSegments, sourceToTrimmedTime } from '@shared/timemap'

@@ -96,10 +96,14 @@ export interface CutRegion extends TimeRegion {
 
 export type TransitionKind = 'crossfade' | 'dip-to-black'
 
-/** Placed at a boundary on the TRIMMED timeline. */
+/**
+ * Placed at a boundary. Like ALL EDL events, anchored in SOURCE time —
+ * conversion to the trimmed timeline happens at render time (timemap.ts),
+ * so cut revisions can never leave events pointing at stale positions.
+ */
 export interface TransitionEvent {
   id: string
-  /** Seconds on the trimmed timeline where the boundary sits. */
+  /** Seconds on the SOURCE timeline where the boundary sits. */
   at: Seconds
   kind: TransitionKind
   durationSec: Seconds
@@ -116,7 +120,7 @@ export type GraphicTemplateId =
 
 export interface GraphicEvent {
   id: string
-  /** Seconds on the trimmed timeline. */
+  /** Seconds on the SOURCE timeline (converted to trimmed at render time). */
   at: Seconds
   durationSec: Seconds
   templateId: GraphicTemplateId
@@ -132,6 +136,7 @@ export interface GraphicEvent {
 
 export interface SfxEvent {
   id: string
+  /** SOURCE-timeline seconds. */
   at: Seconds
   filePath: string
   gainDb: number
@@ -140,7 +145,7 @@ export interface SfxEvent {
 
 export interface MusicCue {
   id: string
-  /** Trimmed-timeline region this track underlays. */
+  /** SOURCE-timeline region this track underlays. */
   region: TimeRegion
   filePath: string
   gainDb: number
@@ -244,6 +249,12 @@ export interface Project {
   /** Original file — NEVER modified. All work happens in workDir. */
   source: SourceInfo
   workDir: string
+  /**
+   * Keep-segments snapshot from the last cut application — defines the
+   * TRIMMED timeline the preview plays. The renderer maps playhead and
+   * transcript times through this (see shared/timemap.ts).
+   */
+  trimKeep?: TimeRegion[]
   transcript?: Transcript
   edl: EDL
   stages: Record<StageId, StageState>

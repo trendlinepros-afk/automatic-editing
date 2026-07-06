@@ -15,7 +15,10 @@ function resolveBin(mod: string, fallbackName: string): string {
     // ffmpeg-static exports the path directly; ffprobe-static exports { path }
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const m = require(mod)
-    const p = typeof m === 'string' ? m : m?.path
+    let p: string | undefined = typeof m === 'string' ? m : m?.path
+    // Binaries inside app.asar cannot be spawned — electron-builder unpacks
+    // them (asarUnpack in package.json); rewrite the path accordingly.
+    if (p) p = p.replace(/\bapp\.asar([\\/])/, 'app.asar.unpacked$1')
     if (p && existsSync(p)) return p
   } catch {
     /* fall through to PATH lookup */
@@ -51,7 +54,7 @@ export function runFFmpeg(args: string[], opts: RunOptions = {}): Promise<string
 
     const child = spawn(FFMPEG_BIN, fullArgs, { windowsHide: true })
     let stderr = ''
-    let stdout = ''
+    let stdoutTail = '' // only the trailing partial line — never the full stream
 
     const onAbort = () => child.kill('SIGKILL')
     opts.signal?.addEventListener('abort', onAbort, { once: true })
@@ -61,18 +64,19 @@ export function runFFmpeg(args: string[], opts: RunOptions = {}): Promise<string
       if (stderr.length > 65536) stderr = stderr.slice(-32768)
     })
     child.stdout.on('data', (d) => {
-      stdout += d.toString()
+      // Parse each -progress chunk incrementally; keep only the partial line.
+      const text = stdoutTail + d.toString()
+      const lines = text.split('\n')
+      stdoutTail = lines.pop() ?? ''
+      if (stdoutTail.length > 4096) stdoutTail = '' // defensive cap
       if (opts.onProgress && opts.totalSec) {
-        // -progress emits `out_time_us=NNN` lines
-        const m = /out_time_us=(\d+)/g
-        let last: RegExpExecArray | null = null
-        let cur: RegExpExecArray | null
-        while ((cur = m.exec(stdout)) !== null) last = cur
-        if (last) {
-          const sec = Number(last[1]) / 1_000_000
-          opts.onProgress(Math.min(1, sec / opts.totalSec))
+        for (let i = lines.length - 1; i >= 0; i--) {
+          const m = lines[i].match(/^out_time_us=(\d+)/)
+          if (m) {
+            opts.onProgress(Math.min(1, Number(m[1]) / 1_000_000 / opts.totalSec))
+            break
+          }
         }
-        if (stdout.length > 65536) stdout = stdout.slice(-32768)
       }
     })
     child.on('error', (err) => {

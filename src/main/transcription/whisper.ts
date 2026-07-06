@@ -8,6 +8,7 @@
 import fs from 'fs'
 import path from 'path'
 import { runFFmpeg } from '../media/ffmpeg'
+import { apiError } from '../net'
 import { getSettingsStore } from '../settings'
 import { newId } from '@shared/id'
 import type { Transcript, TranscriptSegment } from '@shared/types'
@@ -52,11 +53,7 @@ export async function transcribe(
     headers: { Authorization: `Bearer ${key}` },
     body: form
   })
-  if (!res.ok) {
-    const detail = (await res.text()).slice(0, 300)
-    if (res.status === 401) throw new Error('OpenAI rejected the API key. Check it in Settings → API Keys.')
-    throw new Error(`Whisper transcription failed (${res.status}). ${detail}`)
-  }
+  if (!res.ok) throw await apiError('OpenAI Whisper', res)
   const json: any = await res.json()
   onProgress?.(0.95)
 

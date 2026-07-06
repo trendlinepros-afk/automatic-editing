@@ -64,12 +64,19 @@ class RenderQueue extends EventEmitter {
     next.progress = 0
     this.emitJob(next)
     try {
+      let lastEmit = 0
       await next.run({
         signal: next.controller.signal,
         progress: (f, detail) => {
           next.progress = f
           if (detail) next.detail = detail
-          this.emitJob(next)
+          // Throttle progress fan-out (each emit clones + IPCs to every
+          // window); status changes elsewhere always emit unthrottled.
+          const now = Date.now()
+          if (now - lastEmit >= 150 || f >= 1) {
+            lastEmit = now
+            this.emitJob(next)
+          }
         }
       })
       next.status = next.controller.signal.aborted ? 'canceled' : 'done'

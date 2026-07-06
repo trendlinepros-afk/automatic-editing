@@ -67,7 +67,9 @@ Captions are burned in at export via FFmpeg ASS rendering, styled from the same 
 
 ## Updates
 
-*Settings → Updates → **Check for updates*** (also in the Help menu). The installed app checks GitHub Releases via `electron-updater`, downloads in the background, and offers **Restart & install**. To publish an update: bump `version` in `package.json`, build with `npm run dist`, and attach the artifacts to a GitHub Release on this repo.
+*Settings → Updates → **Check for updates*** (also in the Help menu). The installed app checks GitHub Releases via `electron-updater`, downloads in the background, and offers **Restart & install**. To publish an update: bump `version` in `package.json`, run `npm run dist`, and publish the contents of `release/` (the installer **and** `latest.yml`) as a GitHub Release on this repo.
+
+> **Note:** `electron-updater`'s GitHub provider only serves updates from **public** releases. If this repo stays private, either make releases public or switch the `publish` block in `package.json` to a generic/S3 host you control. In dev (`npm run dev`) the button reports dev-mode by design — test updates with an installed build.
 
 ## Project layout
 

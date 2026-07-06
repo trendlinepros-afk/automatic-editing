@@ -94,7 +94,8 @@ export async function planGraphics(transcript: Transcript, signal?: AbortSignal)
         `template library below; never invent templates or write HTML.\n${templateDocs}\n` +
         'Plan sparingly — a graphic must earn its place (a name introduction, a key stat, a list of tips, a strong quote, ' +
         'a section change). Respond with STRICT JSON: {"graphics":[{"at":number,"durationSec":number,' +
-        '"templateId":string,"slots":{...},"rationale":string}]}. Timestamps are seconds on the video timeline.',
+        '"templateId":string,"slots":{...},"rationale":string}]}. Timestamps are seconds on the ORIGINAL video ' +
+        'clock — the same clock as the transcript timestamps you are given.',
       user: `TIMED TRANSCRIPT:\n${transcriptCompact}`,
       jsonSchemaHint: 'graphics array',
       temperature: 0.4
@@ -181,6 +182,8 @@ export async function parseRevision(
         '{"kind":"swap-transition","transitionId":s,"to":"crossfade"|"dip-to-black","durationSec"?:n} | ' +
         '{"kind":"music-gain","region":{"start":n,"end":n},"deltaDb":n} | ' +
         '{"kind":"swap-music","cueId":s}. ' +
+        'ALL timestamps and regions — the selected region, event positions, and any you emit — are seconds on the ' +
+        'ORIGINAL (uncut) video clock. ' +
         'Respond: {"stage":s,"action":{...},"explanation":s}.',
       user:
         `INSTRUCTION: ${text}\n` +

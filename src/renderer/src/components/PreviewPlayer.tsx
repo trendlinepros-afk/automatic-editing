@@ -21,7 +21,9 @@ export default function PreviewPlayer() {
         {src ? (
           <video
             ref={videoRef}
-            key={src + (project?.updatedAt ?? '')}
+            // Remount ONLY when a new preview render lands — not on every
+            // project save (that would reset playback on each EDL edit).
+            key={src + (project?.stages.preview.finishedAt ?? '')}
             src={src}
             className="max-h-full max-w-full"
             controls
