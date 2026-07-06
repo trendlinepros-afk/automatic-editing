@@ -15,6 +15,8 @@ const api: ZirtolaApi = {
 
   importMedia: (projectId, paths) => ipcRenderer.invoke(IPC.mediaImport, projectId, paths),
   removeMedia: (projectId, itemId) => ipcRenderer.invoke(IPC.mediaRemove, projectId, itemId),
+  setMediaOrder: (projectId, itemId, order) => ipcRenderer.invoke(IPC.mediaSetOrder, projectId, itemId, order),
+  startAutoEdit: (projectId) => ipcRenderer.invoke(IPC.autoEditStart, projectId),
   pickMediaFiles: () => ipcRenderer.invoke(IPC.pickMediaFiles),
   pickMediaFolder: () => ipcRenderer.invoke(IPC.pickMediaFolder),
   // Resolves a dropped File to its absolute path without exposing Node to the page.

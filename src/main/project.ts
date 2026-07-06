@@ -12,7 +12,7 @@ import { projectsRoot } from './storage'
 import { buildMediaItems, pruneMediaById } from './mediapool'
 import { saveProjectRow, getProjectRow, listProjectRows, deleteProjectRow } from './db'
 import { renderQueue } from './queue'
-import { STAGE_ORDER, type EDL, type Project, type ProjectSummary, type StageId, type StageState } from '@shared/types'
+import { STAGE_ORDER, type EDL, type MediaItem, type Project, type ProjectSummary, type StageId, type StageState } from '@shared/types'
 
 /**
  * In-memory registry: ONE canonical Project object per id. Long-running
@@ -129,15 +129,49 @@ export function removeProjectMedia(id: string, itemId: string): Project {
   return project
 }
 
+/** Set (order = 1-based number) or clear (order = null) a clip's edit order. */
+export function setMediaOrder(id: string, itemId: string, order: number | null): Project {
+  const project = openProject(id)
+  const apply = (items: MediaItem[]): boolean => {
+    for (const it of items) {
+      if (it.id === itemId) {
+        if (order === null) delete it.order
+        else it.order = order
+        return true
+      }
+      if (it.children && apply(it.children)) return true
+    }
+    return false
+  }
+  apply(project.media ?? [])
+  saveProject(project)
+  return project
+}
+
+/** Absolute paths of the numbered clips, in edit order. */
+export function orderedClipPaths(project: Project): string[] {
+  const found: { order: number; path: string }[] = []
+  const walk = (items: MediaItem[]): void => {
+    for (const it of items) {
+      if (it.kind === 'video' && typeof it.order === 'number') found.push({ order: it.order, path: it.path })
+      if (it.children) walk(it.children)
+    }
+  }
+  walk(project.media ?? [])
+  return found.sort((a, b) => a.order - b.order || a.path.localeCompare(b.path)).map((x) => x.path)
+}
+
 /** Attach (or replace) the source video on a project, probing it and resetting
  *  the pipeline so stages re-run against the new footage. Re-selecting the clip
  *  that is already active is a no-op (keeps existing edits). */
-export async function setProjectSource(id: string, sourcePath: string): Promise<Project> {
+export async function setProjectSource(id: string, sourcePath: string, opts?: { force?: boolean }): Promise<Project> {
   if (!fs.existsSync(sourcePath)) {
     throw new Error(`Source file not found: ${sourcePath}. Pick the file again.`)
   }
   const project = openProject(id)
-  if (project.source && path.resolve(project.source.path) === path.resolve(sourcePath)) {
+  // Re-selecting the already-active clip is a no-op (keeps edits) — unless the
+  // caller forces it (e.g. the sequence file was rebuilt at the same path).
+  if (!opts?.force && project.source && path.resolve(project.source.path) === path.resolve(sourcePath)) {
     return project
   }
   project.source = await probe(sourcePath)

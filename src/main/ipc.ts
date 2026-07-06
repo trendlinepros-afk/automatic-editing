@@ -20,7 +20,8 @@ import {
   pushProject,
   renderKeep,
   latestArtifact,
-  markStaleForEdlChange
+  markStaleForEdlChange,
+  startAutoEdit
 } from './pipeline/runner'
 import { submitRevision } from './pipeline/revisions'
 import { exportFinal } from './media/render'
@@ -56,6 +57,14 @@ export function registerIpc(): void {
   // -- Media pool ----------------------------------------------------------
   ipcMain.handle(IPC.mediaImport, (_e, projectId: string, paths: string[]) => projects.addProjectMedia(projectId, paths))
   ipcMain.handle(IPC.mediaRemove, (_e, projectId: string, itemId: string) => projects.removeProjectMedia(projectId, itemId))
+  ipcMain.handle(IPC.mediaSetOrder, (_e, projectId: string, itemId: string, order: number | null) =>
+    projects.setMediaOrder(projectId, itemId, order)
+  )
+
+  ipcMain.handle(IPC.autoEditStart, async (_e, projectId: string) => {
+    const project = projects.openProject(projectId)
+    startAutoEdit(project).catch((err) => console.error('[auto-edit]', err))
+  })
 
   ipcMain.handle(IPC.pickMediaFiles, async () => {
     const res = await dialog.showOpenDialog({

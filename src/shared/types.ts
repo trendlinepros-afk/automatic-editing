@@ -255,6 +255,9 @@ export interface MediaItem {
   kind: 'video' | 'folder'
   /** Present only for folders. */
   children?: MediaItem[]
+  /** Edit order (1-based) for videos included in the auto-edit. Undefined means
+   *  the clip is excluded from the sequence. */
+  order?: number
 }
 
 export interface Project {

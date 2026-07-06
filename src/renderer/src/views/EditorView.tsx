@@ -6,30 +6,19 @@ import Transcript from '../components/Transcript'
 import RevisionBar from '../components/RevisionBar'
 import GraphicsApproval from '../components/GraphicsApproval'
 import ShortsPanel from '../components/ShortsPanel'
+import Sequencer from '../components/Sequencer'
 
 export default function EditorView({ shortsMode = false }: { shortsMode?: boolean }) {
   const project = useStore((s) => s.project)
-  const setView = useStore((s) => s.setView)
   if (!project) {
     return <div className="p-8 text-ink-500">No project open. Go back to the library and pick one.</div>
   }
 
-  // No active clip yet — the pipeline needs a source. Send the user to the
-  // media pool to import footage and pick a clip to edit.
+  // No edit built yet — number the imported clips into an order and start the
+  // auto-edit. Once the sequence is built the source is set and the pipeline
+  // editor below takes over.
   if (!project.source) {
-    return (
-      <div className="h-full flex items-center justify-center p-8">
-        <div className="panel max-w-md w-full p-8 text-center">
-          <h1 className="font-display text-xl font-bold text-ink-50 mb-1">No clip selected</h1>
-          <p className="text-sm text-ink-400 mb-5">
-            Import your footage in the Media pool, then choose a clip to start editing.
-          </p>
-          <button className="btn btn-primary" onClick={() => setView('media')}>
-            Go to Media
-          </button>
-        </div>
-      </div>
-    )
+    return <Sequencer />
   }
 
   if (shortsMode) {

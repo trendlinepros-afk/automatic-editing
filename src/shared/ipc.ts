@@ -33,8 +33,12 @@ export const IPC = {
   // Media pool
   mediaImport: 'media:import',
   mediaRemove: 'media:remove',
+  mediaSetOrder: 'media:set-order',
   pickMediaFiles: 'media:pick-files',
   pickMediaFolder: 'media:pick-folder',
+
+  // Auto-edit (build sequence + run pipeline)
+  autoEditStart: 'auto-edit:start',
 
   // Pipeline
   pipelineRun: 'pipeline:run',
@@ -92,6 +96,10 @@ export interface ZirtolaApi {
   /** Import videos/folders (by absolute path) into the project media pool. */
   importMedia(projectId: string, paths: string[]): Promise<Project>
   removeMedia(projectId: string, itemId: string): Promise<Project>
+  /** Set (order number) or clear (null) a clip's edit order. */
+  setMediaOrder(projectId: string, itemId: string, order: number | null): Promise<Project>
+  /** Build the ordered-clip sequence and run the full pipeline. */
+  startAutoEdit(projectId: string): Promise<void>
   /** Open a multi-select file dialog for videos; returns absolute paths. */
   pickMediaFiles(): Promise<string[]>
   /** Open a folder dialog; returns the chosen folder path. */

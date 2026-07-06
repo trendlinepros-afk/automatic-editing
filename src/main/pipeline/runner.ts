@@ -24,7 +24,8 @@ import { STAGE_ORDER, type EDL, type Project, type StageId, type TimeRegion } fr
 import { IPC } from '@shared/ipc'
 import { newId } from '@shared/id'
 import { cutsToKeepSegments, sourceToTrimmedTime, trimmedToSourceTime } from '@shared/timemap'
-import { saveProject } from '../project'
+import { saveProject, setProjectSource, orderedClipPaths } from '../project'
+import { buildSequence } from '../media/sequence'
 import { enqueueAndWait, type JobContext } from '../queue'
 import { detectSilence, silencesToCuts } from '../media/silence'
 import { detectSceneChanges } from '../media/scenes'
@@ -381,6 +382,37 @@ export async function runStages(project: Project, stages: StageId[]): Promise<vo
 /** Full pipeline run in strict order (stops at the graphics approval gate). */
 export async function runFullPipeline(project: Project): Promise<void> {
   await runStages(project, [...STAGE_ORDER])
+}
+
+/**
+ * Multi-clip auto-edit: concatenate the numbered clips (in order) into one
+ * working video, set it as the source, then run the full pipeline. A single
+ * numbered clip is edited in place with no concat.
+ */
+export async function startAutoEdit(project: Project): Promise<void> {
+  const clips = orderedClipPaths(project)
+  if (clips.length === 0) {
+    throw new Error('Number at least one clip to include it in the edit.')
+  }
+
+  let seqPath = ''
+  await enqueueAndWait(
+    'stage-run',
+    clips.length > 1 ? `Building sequence from ${clips.length} clips` : 'Preparing clip',
+    project.id,
+    async (ctx) => {
+      seqPath = await buildSequence(project.workDir, clips, {
+        signal: ctx.signal,
+        onProgress: (f) => ctx.progress(f, 'Building sequence…')
+      })
+    }
+  )
+
+  // force: the multi-clip sequence lives at a fixed path, so a re-run rebuilds
+  // the same filename with new content — bypass the same-path no-op guard.
+  const updated = await setProjectSource(project.id, seqPath, { force: true })
+  pushProject(updated)
+  await runFullPipeline(updated)
 }
 
 /**

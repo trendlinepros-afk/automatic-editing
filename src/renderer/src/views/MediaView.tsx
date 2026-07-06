@@ -1,12 +1,12 @@
 /**
- * Media pool — like a Premiere/Resolve bin. Import multiple videos or whole
- * folders (drag-and-drop or the Import button); the folder structure is kept so
- * the user's own sorting is preserved. Files are referenced IN PLACE — never
- * copied or modified. Pick a clip to make it the active source the AI edits.
+ * Media pool (Media tab) — import multiple videos or whole folders (drag-and-drop
+ * or the Import button); the folder structure is preserved. Files are referenced
+ * IN PLACE — never copied or modified. "Import & Continue" moves to the editor,
+ * where clips are numbered into an edit order.
  */
 import { useState } from 'react'
 import { useStore } from '../state/store'
-import type { MediaItem } from '@shared/types'
+import MediaTree from '../components/MediaTree'
 
 export default function MediaView() {
   const project = useStore((s) => s.project)
@@ -19,7 +19,6 @@ export default function MediaView() {
   if (!project) return null
 
   const media = project.media ?? []
-  const activePath = project.source?.path ?? null
 
   async function importPaths(paths: string[]) {
     if (!project || paths.length === 0) return
@@ -54,21 +53,7 @@ export default function MediaView() {
     importPaths(paths)
   }
 
-  async function makeActive(item: MediaItem) {
-    if (!project) return
-    setBusy(true)
-    setError(null)
-    try {
-      applyProjectPush(await window.zirtola.setProjectSource(project.id, item.path))
-      setView('editor')
-    } catch (err: any) {
-      setError(err?.message ?? 'Could not open that clip.')
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  async function remove(item: MediaItem) {
+  async function remove(item: { id: string }) {
     if (!project) return
     applyProjectPush(await window.zirtola.removeMedia(project.id, item.id))
   }
@@ -77,35 +62,34 @@ export default function MediaView() {
     <div className="h-full flex flex-col p-6 max-w-4xl mx-auto w-full">
       <div className="flex items-center justify-between mb-1">
         <h1 className="font-display text-2xl font-bold text-ink-50">Media</h1>
-        <div className="relative">
-          <button className="btn btn-primary" onClick={() => setMenuOpen((v) => !v)} disabled={busy}>
-            Import ▾
+        <div className="flex items-center gap-2">
+          <div className="relative">
+            <button className="btn" onClick={() => setMenuOpen((v) => !v)} disabled={busy}>
+              Import ▾
+            </button>
+            {menuOpen && (
+              <>
+                <div className="fixed inset-0 z-10" onClick={() => setMenuOpen(false)} />
+                <div className="absolute right-0 mt-1 z-20 panel bg-ink-800 p-1 w-44 shadow-xl">
+                  <button className="block w-full text-left px-3 py-1.5 text-sm rounded hover:bg-ink-700" onClick={importFiles}>
+                    Video files…
+                  </button>
+                  <button className="block w-full text-left px-3 py-1.5 text-sm rounded hover:bg-ink-700" onClick={importFolder}>
+                    Folder…
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+          <button className="btn btn-primary" onClick={() => setView('editor')} disabled={media.length === 0}>
+            Import &amp; Continue →
           </button>
-          {menuOpen && (
-            <>
-              <div className="fixed inset-0 z-10" onClick={() => setMenuOpen(false)} />
-              <div className="absolute right-0 mt-1 z-20 panel bg-ink-800 p-1 w-44 shadow-xl">
-                <button className="block w-full text-left px-3 py-1.5 text-sm rounded hover:bg-ink-700" onClick={importFiles}>
-                  Video files…
-                </button>
-                <button className="block w-full text-left px-3 py-1.5 text-sm rounded hover:bg-ink-700" onClick={importFolder}>
-                  Folder…
-                </button>
-              </div>
-            </>
-          )}
         </div>
       </div>
       <p className="text-xs text-ink-500 mb-2">
         Files are linked in place (read-only) — never copied or modified. 💡 Keep media on a local drive; network
         drives can be slow and unreliable.
       </p>
-
-      {media.length > 0 && (
-        <p className="text-xs text-signal mb-2">
-          👉 Click a clip below to load it into the Editor and run the AI pipeline.
-        </p>
-      )}
 
       {error && <p className="text-xs text-cut mb-2">{error}</p>}
 
@@ -126,91 +110,9 @@ export default function MediaView() {
             <p className="text-sm text-ink-500">or use the Import button. Folders keep their structure.</p>
           </div>
         ) : (
-          <div className="space-y-0.5">
-            {media.map((item) => (
-              <MediaNode
-                key={item.id}
-                item={item}
-                depth={0}
-                activePath={activePath}
-                busy={busy}
-                onEdit={makeActive}
-                onRemove={remove}
-              />
-            ))}
-          </div>
+          <MediaTree media={media} onRemove={remove} />
         )}
       </div>
-    </div>
-  )
-}
-
-interface NodeProps {
-  item: MediaItem
-  depth: number
-  activePath: string | null
-  busy: boolean
-  onEdit: (i: MediaItem) => void
-  onRemove: (i: MediaItem) => void
-}
-
-function MediaNode({ item, depth, activePath, busy, onEdit, onRemove }: NodeProps) {
-  const [open, setOpen] = useState(true)
-  const isFolder = item.kind === 'folder'
-  const isActive = !isFolder && activePath === item.path
-
-  return (
-    <div>
-      <div
-        className={`group flex items-center gap-2 rounded px-2 py-1 ${
-          isActive ? 'bg-signal/10' : 'hover:bg-ink-800'
-        } ${!isFolder ? 'cursor-pointer' : ''}`}
-        style={{ paddingLeft: depth * 16 + 8 }}
-        onClick={() => (isFolder ? setOpen((v) => !v) : !busy && onEdit(item))}
-        title={isFolder ? undefined : 'Click to edit this clip'}
-      >
-        {isFolder ? (
-          <span className="w-4 text-ink-400 shrink-0">{open ? '▾' : '▸'}</span>
-        ) : (
-          <span className="w-4 shrink-0" />
-        )}
-        <span className="shrink-0">{isFolder ? '📁' : '🎬'}</span>
-        <span className={`flex-1 truncate text-sm ${isActive ? 'text-signal font-medium' : 'text-ink-200'}`}>
-          {item.name}
-        </span>
-
-        {isActive ? (
-          <span className="text-[10px] uppercase tracking-wide text-signal shrink-0">✓ editing</span>
-        ) : (
-          !isFolder && <span className="text-[11px] text-signal shrink-0 group-hover:underline">Edit →</span>
-        )}
-        <button
-          className="text-[11px] text-ink-500 opacity-0 group-hover:opacity-100 hover:text-cut shrink-0"
-          onClick={(e) => {
-            e.stopPropagation()
-            onRemove(item)
-          }}
-          title="Remove from media pool (does not delete the file)"
-        >
-          ✕
-        </button>
-      </div>
-
-      {isFolder && open && item.children && (
-        <div>
-          {item.children.map((child) => (
-            <MediaNode
-              key={child.id}
-              item={child}
-              depth={depth + 1}
-              activePath={activePath}
-              busy={busy}
-              onEdit={onEdit}
-              onRemove={onRemove}
-            />
-          ))}
-        </div>
-      )}
     </div>
   )
 }
