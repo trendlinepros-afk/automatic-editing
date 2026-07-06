@@ -33,7 +33,9 @@ export class GeminiProvider implements AIProvider {
   readonly label = 'Gemini'
   constructor(
     private apiKey: string,
-    private model = 'gemini-2.0-flash'
+    // gemini-2.0-flash was retired; 2.5-flash is the current fast model on the
+    // generativelanguage v1beta generateContent endpoint.
+    private model = 'gemini-2.5-flash'
   ) {}
 
   async complete(req: AIRequest, signal?: AbortSignal): Promise<string> {
