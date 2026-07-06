@@ -101,6 +101,12 @@ export default function MediaView() {
         drives can be slow and unreliable.
       </p>
 
+      {media.length > 0 && (
+        <p className="text-xs text-signal mb-2">
+          👉 Click a clip below to load it into the Editor and run the AI pipeline.
+        </p>
+      )}
+
       {error && <p className="text-xs text-cut mb-2">{error}</p>}
 
       <div
@@ -156,32 +162,34 @@ function MediaNode({ item, depth, activePath, busy, onEdit, onRemove }: NodeProp
   return (
     <div>
       <div
-        className={`group flex items-center gap-2 rounded px-2 py-1 hover:bg-ink-800 ${isActive ? 'bg-signal/10' : ''}`}
+        className={`group flex items-center gap-2 rounded px-2 py-1 ${
+          isActive ? 'bg-signal/10' : 'hover:bg-ink-800'
+        } ${!isFolder ? 'cursor-pointer' : ''}`}
         style={{ paddingLeft: depth * 16 + 8 }}
+        onClick={() => (isFolder ? setOpen((v) => !v) : !busy && onEdit(item))}
+        title={isFolder ? undefined : 'Click to edit this clip'}
       >
         {isFolder ? (
-          <button className="w-4 text-ink-400 shrink-0" onClick={() => setOpen((v) => !v)} aria-label={open ? 'Collapse' : 'Expand'}>
-            {open ? '▾' : '▸'}
-          </button>
+          <span className="w-4 text-ink-400 shrink-0">{open ? '▾' : '▸'}</span>
         ) : (
           <span className="w-4 shrink-0" />
         )}
         <span className="shrink-0">{isFolder ? '📁' : '🎬'}</span>
-        <span className={`flex-1 truncate text-sm ${isActive ? 'text-signal' : 'text-ink-200'}`}>{item.name}</span>
+        <span className={`flex-1 truncate text-sm ${isActive ? 'text-signal font-medium' : 'text-ink-200'}`}>
+          {item.name}
+        </span>
 
-        {isActive && <span className="text-[10px] uppercase tracking-wide text-signal shrink-0">editing</span>}
-        {!isFolder && !isActive && (
-          <button
-            className="text-[11px] text-signal opacity-0 group-hover:opacity-100 hover:underline shrink-0"
-            disabled={busy}
-            onClick={() => onEdit(item)}
-          >
-            Edit this clip
-          </button>
+        {isActive ? (
+          <span className="text-[10px] uppercase tracking-wide text-signal shrink-0">✓ editing</span>
+        ) : (
+          !isFolder && <span className="text-[11px] text-signal shrink-0 group-hover:underline">Edit →</span>
         )}
         <button
           className="text-[11px] text-ink-500 opacity-0 group-hover:opacity-100 hover:text-cut shrink-0"
-          onClick={() => onRemove(item)}
+          onClick={(e) => {
+            e.stopPropagation()
+            onRemove(item)
+          }}
           title="Remove from media pool (does not delete the file)"
         >
           ✕
