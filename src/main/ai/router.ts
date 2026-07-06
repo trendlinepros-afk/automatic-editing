@@ -4,7 +4,7 @@
  * routed provider has no key, so keyless runs still complete.
  */
 import type { AITask, AIProviderId } from '@shared/types'
-import { GeminiProvider, makeDeepSeekProvider, makeOpenAIProvider, type AIProvider, type AIRequest } from './provider'
+import { AnthropicProvider, GeminiProvider, makeDeepSeekProvider, makeOpenAIProvider, type AIProvider, type AIRequest } from './provider'
 import { MockProvider } from './mock'
 import { getSettingsStore } from '../settings'
 
@@ -13,7 +13,8 @@ const mock = new MockProvider()
 const FACTORIES: Record<Exclude<AIProviderId, 'mock'>, (key: string) => AIProvider> = {
   gemini: (key) => new GeminiProvider(key),
   openai: makeOpenAIProvider,
-  deepseek: makeDeepSeekProvider
+  deepseek: makeDeepSeekProvider,
+  anthropic: (key) => new AnthropicProvider(key)
 }
 
 /** ONE place that decides real-vs-mock: no key for the routed provider →

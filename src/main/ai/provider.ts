@@ -8,6 +8,7 @@
  * Transcription is NOT routed here — it is pinned to OpenAI Whisper
  * (see transcription/whisper.ts).
  */
+import Anthropic from '@anthropic-ai/sdk'
 import { apiError } from '../net'
 
 export interface AIRequest {
@@ -102,4 +103,52 @@ export function makeOpenAIProvider(apiKey: string): AIProvider {
 
 export function makeDeepSeekProvider(apiKey: string): AIProvider {
   return new OpenAICompatibleProvider('deepseek', 'DeepSeek', 'https://api.deepseek.com/v1', apiKey, 'deepseek-chat')
+}
+
+/**
+ * Anthropic (Claude) via the official SDK. Uses the Messages API — system is a
+ * top-level field (not a message), and `temperature` is intentionally NOT sent
+ * (Opus 4.8 rejects it). Structured JSON is requested via the prompt and parsed
+ * by the robust extractJson layer, matching how the other providers are handled.
+ */
+export class AnthropicProvider implements AIProvider {
+  readonly id = 'anthropic'
+  readonly label = 'Anthropic (Claude)'
+  private client: Anthropic
+
+  constructor(
+    apiKey: string,
+    private model = 'claude-opus-4-8'
+  ) {
+    this.client = new Anthropic({ apiKey })
+  }
+
+  async complete(req: AIRequest, signal?: AbortSignal): Promise<string> {
+    try {
+      const message = await this.client.messages.create(
+        {
+          model: this.model,
+          max_tokens: req.maxTokens ?? 4096,
+          system: req.system,
+          messages: [{ role: 'user', content: req.user }]
+        },
+        { signal }
+      )
+      const text = message.content
+        .filter((b): b is Anthropic.TextBlock => b.type === 'text')
+        .map((b) => b.text)
+        .join('')
+      if (!text) throw new Error('Anthropic (Claude) returned an empty response.')
+      return text
+    } catch (err: any) {
+      if (err instanceof Anthropic.AuthenticationError || err instanceof Anthropic.PermissionDeniedError) {
+        throw new Error('Anthropic rejected the API key. Check it in Settings → API Keys.')
+      }
+      if (err instanceof Anthropic.RateLimitError) {
+        throw new Error('Anthropic rate limit hit. Wait a moment and try again.')
+      }
+      if (err?.name === 'AbortError' || signal?.aborted) throw err
+      throw new Error(`Anthropic request failed: ${err?.message ?? err}`)
+    }
+  }
 }

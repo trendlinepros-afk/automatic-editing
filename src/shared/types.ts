@@ -280,7 +280,7 @@ export interface ProjectSummary {
 // AI routing
 // ---------------------------------------------------------------------------
 
-export type AIProviderId = 'gemini' | 'openai' | 'deepseek' | 'mock'
+export type AIProviderId = 'gemini' | 'openai' | 'deepseek' | 'anthropic' | 'mock'
 
 export type AITask =
   | 'cut-review'
@@ -304,7 +304,7 @@ export interface AppSettings {
    *  a default under the app's user-data directory is used. */
   projectsDir?: string
   /** Which keys exist — the values never cross the IPC boundary. */
-  keysPresent: Record<'gemini' | 'openai' | 'deepseek' | 'opusclip', boolean>
+  keysPresent: Record<'gemini' | 'openai' | 'deepseek' | 'anthropic' | 'opusclip', boolean>
   routing: AIRoutingConfig
   silence: { thresholdDb: number; minSilenceSec: number; keepPadMs: number }
   scene: { threshold: number; defaultTransition: TransitionKind; defaultDurationSec: number }

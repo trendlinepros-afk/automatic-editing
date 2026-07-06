@@ -8,19 +8,28 @@ const TASKS: { id: AITask; label: string }[] = [
   { id: 'graphic-slot-filling', label: 'Graphic slot filling (stage 4)' },
   { id: 'revision-parsing', label: 'Revision parsing (review loop)' }
 ]
-const PROVIDERS: AIProviderId[] = ['gemini', 'openai', 'deepseek']
+const PROVIDERS: AIProviderId[] = ['gemini', 'openai', 'deepseek', 'anthropic']
 
 export default function SettingsView() {
-  const { settings, refreshSettings } = useStore()
+  const { settings, refreshSettings, project, setView } = useStore()
   useEffect(() => {
     refreshSettings()
   }, [])
   if (!settings) return <div className="p-8 text-ink-500">Loading settings…</div>
 
+  // Back returns to wherever the user came from: the editor if a project is
+  // open, otherwise the project library.
+  const goBack = () => setView(project ? 'editor' : 'library')
+
   return (
     <div className="h-full overflow-y-auto">
       <div className="p-8 max-w-3xl mx-auto space-y-8">
-        <h1 className="font-display text-2xl font-bold text-ink-50">Settings</h1>
+        <div className="flex items-center justify-between">
+          <h1 className="font-display text-2xl font-bold text-ink-50">Settings</h1>
+          <button className="btn" onClick={goBack}>
+            ← Back{project ? ' to editor' : ' to projects'}
+          </button>
+        </div>
         <ProjectStorage />
         <ApiKeys />
         <Routing />
@@ -89,6 +98,7 @@ function ApiKeys() {
     { id: 'gemini' as const, label: 'Gemini (default AI provider)' },
     { id: 'openai' as const, label: 'OpenAI (Whisper transcription + optional AI)' },
     { id: 'deepseek' as const, label: 'DeepSeek (optional AI)' },
+    { id: 'anthropic' as const, label: 'Anthropic (Claude — optional AI)' },
     { id: 'opusclip' as const, label: 'OpusClip (shorts — Pro Beta / Max / Business plan)' }
   ]
   return (
@@ -146,7 +156,7 @@ function Routing() {
             {PROVIDERS.map((p) => (
               <option key={p} value={p}>
                 {p}
-                {!settings.keysPresent[p as 'gemini' | 'openai' | 'deepseek'] ? ' (no key → mock)' : ''}
+                {!settings.keysPresent[p as 'gemini' | 'openai' | 'deepseek' | 'anthropic'] ? ' (no key → mock)' : ''}
               </option>
             ))}
           </select>
@@ -351,12 +361,15 @@ function OpusClipPanel() {
 function Updates() {
   const [result, setResult] = useState<UpdateCheckResult | null>(null)
   const [checking, setChecking] = useState(false)
+  const [installing, setInstalling] = useState(false)
+  const downloaded = result?.status === 'downloaded'
+
   return (
     <Section title="Updates">
       <div className="flex items-center gap-3">
         <button
           className="btn btn-primary"
-          disabled={checking}
+          disabled={checking || installing}
           onClick={async () => {
             setChecking(true)
             setResult(null)
@@ -375,13 +388,43 @@ function Updates() {
         >
           {checking ? 'Checking…' : 'Check for updates'}
         </button>
-        {result?.status === 'downloaded' && (
-          <button className="btn" onClick={() => window.wickedcut.installUpdate()}>
-            Restart & install v{result.latestVersion}
-          </button>
-        )}
       </div>
-      {result && (
+
+      {downloaded && (
+        <div className="panel bg-ink-850 p-4 space-y-3">
+          <p className="text-sm text-ink-200">
+            Version <b className="text-signal">{result.latestVersion}</b> is downloaded and ready to install.
+            Your projects are saved automatically, so it's safe to install any time.
+          </p>
+          <div className="flex flex-col sm:flex-row gap-2">
+            <button
+              className="btn btn-primary"
+              disabled={installing}
+              onClick={() => {
+                setInstalling(true)
+                // Projects autosave on every edit, so progress is already on
+                // disk; this closes the app and installs the update.
+                window.wickedcut.installUpdate()
+              }}
+            >
+              {installing ? 'Closing & installing…' : 'Save, close app & install update now'}
+            </button>
+            <button
+              className="btn"
+              disabled={installing}
+              onClick={() => setResult(null)}
+              title="The update will install automatically the next time you quit WickedCut."
+            >
+              I'll close & relaunch it myself later
+            </button>
+          </div>
+          <p className="text-[11px] text-ink-500">
+            If you choose to relaunch yourself, the update installs automatically the next time you fully quit the app.
+          </p>
+        </div>
+      )}
+
+      {result && !downloaded && (
         <p className={`text-xs ${result.status === 'error' ? 'text-cut' : 'text-ink-400'}`}>{result.message}</p>
       )}
     </Section>

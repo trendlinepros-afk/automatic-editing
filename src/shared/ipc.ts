@@ -106,7 +106,7 @@ export interface WickedCutApi {
   // Settings
   getSettings(): Promise<AppSettings>
   updateSettings(patch: Partial<AppSettings>): Promise<AppSettings>
-  setApiKey(name: 'gemini' | 'openai' | 'deepseek' | 'opusclip' | 's3-access' | 's3-secret', value: string): Promise<void>
+  setApiKey(name: 'gemini' | 'openai' | 'deepseek' | 'anthropic' | 'opusclip' | 's3-access' | 's3-secret', value: string): Promise<void>
   /** Set the master projects folder and mark onboarding complete. Pass null to
    *  accept the default location. */
   setProjectsDir(dir: string | null): Promise<AppSettings>

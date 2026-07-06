@@ -10,7 +10,7 @@ import fs from 'fs'
 import path from 'path'
 import type { AppSettings, BrandKit } from '@shared/types'
 
-export type SecretName = 'gemini' | 'openai' | 'deepseek' | 'opusclip' | 's3-access' | 's3-secret'
+export type SecretName = 'gemini' | 'openai' | 'deepseek' | 'anthropic' | 'opusclip' | 's3-access' | 's3-secret'
 
 const DEFAULT_BRAND: BrandKit = {
   fontDisplay: 'Segoe UI Variable Display',
@@ -27,7 +27,7 @@ const DEFAULT_BRAND: BrandKit = {
 
 const DEFAULTS: AppSettings = {
   onboarded: false,
-  keysPresent: { gemini: false, openai: false, deepseek: false, opusclip: false },
+  keysPresent: { gemini: false, openai: false, deepseek: false, anthropic: false, opusclip: false },
   routing: {
     taskProviders: {
       'cut-review': 'gemini',
@@ -87,6 +87,7 @@ class SettingsStore {
       gemini: Boolean(this.secrets['gemini']),
       openai: Boolean(this.secrets['openai']),
       deepseek: Boolean(this.secrets['deepseek']),
+      anthropic: Boolean(this.secrets['anthropic']),
       opusclip: Boolean(this.secrets['opusclip'])
     }
     this.settings.hosting.configured = Boolean(this.secrets['s3-access'] && this.secrets['s3-secret'] && this.settings.hosting.bucket)
