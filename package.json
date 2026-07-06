@@ -40,7 +40,8 @@
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
-      "shortcutName": "Zirtola",
+      "shortcutName": "Zirtola - AI Video Editor",
+      "uninstallDisplayName": "Zirtola - AI Video Editor",
       "createDesktopShortcut": "always",
       "createStartMenuShortcut": true
     },

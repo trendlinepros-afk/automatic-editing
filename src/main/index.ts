@@ -31,7 +31,7 @@ function createWindow(): BrowserWindow {
     minWidth: 1180,
     minHeight: 720,
     backgroundColor: '#0b0d10',
-    title: 'Zirtola',
+    title: 'Zirtola - AI Video Editor',
     autoHideMenuBar: false,
     webPreferences: {
       preload: path.join(__dirname, '../preload/index.js'),

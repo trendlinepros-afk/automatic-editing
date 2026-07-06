@@ -54,13 +54,19 @@ export default function App() {
       {/* Top bar */}
       <header className="flex items-center gap-4 px-4 h-12 bg-ink-900 border-b border-ink-700 shrink-0">
         <button
-          className="font-display font-bold text-ink-50 tracking-tight hover:text-signal transition-colors"
+          className="flex items-baseline gap-2 hover:opacity-90 transition-opacity"
           onClick={() => {
             closeProject()
             refreshProjects()
           }}
+          title="Zirtola - AI Video Editor"
         >
-          Zir<span className="text-signal">tola</span>
+          <span className="font-display font-bold text-ink-50 tracking-tight">
+            Zir<span className="text-signal">tola</span>
+          </span>
+          <span className="text-[11px] font-medium uppercase tracking-wider text-ink-400 hidden sm:inline">
+            AI Video Editor
+          </span>
         </button>
         {project && (
           <span className="text-sm text-ink-400 truncate max-w-md">
