@@ -19,15 +19,23 @@ let downloadedVersion: string | null = null
 let inFlight: Promise<UpdateCheckResult> | null = null
 
 async function getUpdater() {
-  const { autoUpdater } = await import('electron-updater')
+  // electron-updater is CommonJS. Depending on how the main bundle interops
+  // it, the `autoUpdater` singleton can arrive as a named export OR nested
+  // under `.default` — resolve both so the packaged build never gets
+  // `undefined` here (which threw "Cannot set properties of undefined").
+  const mod: any = await import('electron-updater')
+  const autoUpdater = mod.autoUpdater ?? mod.default?.autoUpdater ?? mod.default
+  if (!autoUpdater || typeof autoUpdater.checkForUpdates !== 'function') {
+    throw new Error('The updater module failed to load. Reinstall the app from the latest release.')
+  }
   if (!updaterReady) {
     updaterReady = true
     autoUpdater.autoDownload = true
     autoUpdater.autoInstallOnAppQuit = true
     // Never let a background updater error crash the app (EventEmitter throws
     // on unhandled 'error'). Individual checks still surface errors below.
-    autoUpdater.on('error', (err) => console.warn('[updater]', err?.message ?? err))
-    autoUpdater.on('update-downloaded', (info) => {
+    autoUpdater.on('error', (err: any) => console.warn('[updater]', err?.message ?? err))
+    autoUpdater.on('update-downloaded', (info: any) => {
       downloadedVersion = info?.version ?? downloadedVersion
     })
   }
