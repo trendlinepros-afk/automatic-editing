@@ -1,8 +1,8 @@
-import type { WickedCutApi } from '../shared/ipc'
+import type { ZirtolaApi } from '../shared/ipc'
 
 declare global {
   interface Window {
-    wickedcut: WickedCutApi
+    zirtola: ZirtolaApi
   }
 }
 

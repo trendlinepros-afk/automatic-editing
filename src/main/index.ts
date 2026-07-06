@@ -1,5 +1,5 @@
 /**
- * WickedCut — Electron main process entry.
+ * Zirtola — Electron main process entry.
  */
 import { app, BrowserWindow, Menu, protocol, net, shell } from 'electron'
 import path from 'path'
@@ -23,7 +23,7 @@ function createWindow(): BrowserWindow {
     minWidth: 1180,
     minHeight: 720,
     backgroundColor: '#0b0d10',
-    title: 'WickedCut',
+    title: 'Zirtola',
     autoHideMenuBar: false,
     webPreferences: {
       preload: path.join(__dirname, '../preload/index.js'),

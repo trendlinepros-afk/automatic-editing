@@ -89,7 +89,7 @@ export const useStore = create<Store>((set, get) => {
         future: stacks.future.slice(0, HISTORY_LIMIT)
       }
     })
-    const updated = await window.wickedcut.updateEdl(project.id, edl)
+    const updated = await window.zirtola.updateEdl(project.id, edl)
     set((s) =>
       s.project && s.project.id === updated.id && s.project.updatedAt <= updated.updatedAt
         ? { project: updated }
@@ -102,11 +102,11 @@ export const useStore = create<Store>((set, get) => {
     setView: (view) => set({ view }),
 
     projects: [],
-    refreshProjects: async () => set({ projects: await window.wickedcut.listProjects() }),
+    refreshProjects: async () => set({ projects: await window.zirtola.listProjects() }),
 
     project: null,
     openProject: async (id) => {
-      const project = await window.wickedcut.openProject(id)
+      const project = await window.zirtola.openProject(id)
       set({ project, view: 'editor', past: [], future: [], selection: { region: null, segmentIds: [] } })
     },
     closeProject: () => set({ project: null, view: 'library', past: [], future: [] }),
@@ -163,7 +163,7 @@ export const useStore = create<Store>((set, get) => {
     },
 
     jobs: [],
-    refreshJobs: async () => set({ jobs: await window.wickedcut.listJobs() }),
+    refreshJobs: async () => set({ jobs: await window.zirtola.listJobs() }),
     upsertJob: (j) => {
       const jobs = get().jobs
       const idx = jobs.findIndex((x) => x.id === j.id)
@@ -171,8 +171,8 @@ export const useStore = create<Store>((set, get) => {
     },
 
     settings: null,
-    refreshSettings: async () => set({ settings: await window.wickedcut.getSettings() }),
-    saveSettings: async (patch) => set({ settings: await window.wickedcut.updateSettings(patch) }),
-    completeOnboarding: async (dir) => set({ settings: await window.wickedcut.setProjectsDir(dir) })
+    refreshSettings: async () => set({ settings: await window.zirtola.getSettings() }),
+    saveSettings: async (patch) => set({ settings: await window.zirtola.updateSettings(patch) }),
+    completeOnboarding: async (dir) => set({ settings: await window.zirtola.setProjectsDir(dir) })
   }
 })

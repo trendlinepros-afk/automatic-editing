@@ -80,7 +80,7 @@ function ProjectStorage() {
         <button
           className="btn text-xs"
           onClick={async () => {
-            const dir = await window.wickedcut.pickDirectory()
+            const dir = await window.zirtola.pickDirectory()
             if (dir) await completeOnboarding(dir)
           }}
         >
@@ -122,7 +122,7 @@ function ApiKeys() {
           <button
             className="btn text-xs shrink-0"
             onClick={async () => {
-              await window.wickedcut.setApiKey(k.id, values[k.id] ?? '')
+              await window.zirtola.setApiKey(k.id, values[k.id] ?? '')
               setValues((v) => ({ ...v, [k.id]: '' }))
               refreshSettings()
             }}
@@ -242,7 +242,7 @@ function BrandKitPanel() {
           <button
             className="btn text-xs"
             onClick={async () => {
-              const font = await window.wickedcut.pickFontFile()
+              const font = await window.zirtola.pickFontFile()
               if (font) save({ customFonts: [...bk.customFonts, font] })
             }}
           >
@@ -271,7 +271,7 @@ function BrandKitPanel() {
           <button
             className="btn text-xs"
             onClick={async () => {
-              const p = await window.wickedcut.pickLogoFile()
+              const p = await window.zirtola.pickLogoFile()
               if (p) save({ logoPath: p })
             }}
           >
@@ -287,7 +287,7 @@ function Libraries() {
   const { settings, saveSettings } = useStore()
   if (!settings) return null
   const pick = async (key: 'musicLibraryDir' | 'sfxLibraryDir') => {
-    const dir = await window.wickedcut.pickDirectory()
+    const dir = await window.zirtola.pickDirectory()
     if (dir) saveSettings({ [key]: dir })
   }
   return (
@@ -321,11 +321,11 @@ function HostingPanel() {
       <Row label="Public base URL (optional)"><input className="input" defaultValue={h.publicBaseUrl ?? ''} placeholder="https://cdn.example.com — leave empty to use signed URLs" onBlur={(e) => save({ publicBaseUrl: e.target.value })} /></Row>
       <Row label="Access key">
         <input className="input" type="password" value={creds.access} onChange={(e) => setCreds((c) => ({ ...c, access: e.target.value }))} />
-        <button className="btn text-xs" onClick={async () => { await window.wickedcut.setApiKey('s3-access', creds.access); setCreds((c) => ({ ...c, access: '' })); refreshSettings() }}>Save</button>
+        <button className="btn text-xs" onClick={async () => { await window.zirtola.setApiKey('s3-access', creds.access); setCreds((c) => ({ ...c, access: '' })); refreshSettings() }}>Save</button>
       </Row>
       <Row label="Secret key">
         <input className="input" type="password" value={creds.secret} onChange={(e) => setCreds((c) => ({ ...c, secret: e.target.value }))} />
-        <button className="btn text-xs" onClick={async () => { await window.wickedcut.setApiKey('s3-secret', creds.secret); setCreds((c) => ({ ...c, secret: '' })); refreshSettings() }}>Save</button>
+        <button className="btn text-xs" onClick={async () => { await window.zirtola.setApiKey('s3-secret', creds.secret); setCreds((c) => ({ ...c, secret: '' })); refreshSettings() }}>Save</button>
       </Row>
       <p className={`text-xs ${h.configured ? 'text-signal' : 'text-warn'}`}>
         {h.configured ? '✓ Hosting configured.' : 'Hosting not configured yet — Shorts generation will be blocked until it is.'}
@@ -350,7 +350,7 @@ function OpusClipPanel() {
       </Row>
       <Row label="Webhook URL (optional)">
         <input
-          className="input" defaultValue={settings.opusclip.webhookUrl ?? ''} placeholder="left empty → WickedCut polls for results"
+          className="input" defaultValue={settings.opusclip.webhookUrl ?? ''} placeholder="left empty → Zirtola polls for results"
           onBlur={(e) => saveSettings({ opusclip: { ...settings.opusclip, webhookUrl: e.target.value || undefined } })}
         />
       </Row>
@@ -374,7 +374,7 @@ function Updates() {
             setChecking(true)
             setResult(null)
             try {
-              setResult(await window.wickedcut.checkForUpdates())
+              setResult(await window.zirtola.checkForUpdates())
             } catch (err: any) {
               setResult({
                 status: 'error',
@@ -404,7 +404,7 @@ function Updates() {
                 setInstalling(true)
                 // Projects autosave on every edit, so progress is already on
                 // disk; this closes the app and installs the update.
-                window.wickedcut.installUpdate()
+                window.zirtola.installUpdate()
               }}
             >
               {installing ? 'Closing & installing…' : 'Save, close app & install update now'}
@@ -413,7 +413,7 @@ function Updates() {
               className="btn"
               disabled={installing}
               onClick={() => setResult(null)}
-              title="The update will install automatically the next time you quit WickedCut."
+              title="The update will install automatically the next time you quit Zirtola."
             >
               I'll close & relaunch it myself later
             </button>

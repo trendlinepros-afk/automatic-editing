@@ -1,12 +1,12 @@
 /**
- * Preload — exposes the typed WickedCut API to the renderer over a
+ * Preload — exposes the typed Zirtola API to the renderer over a
  * contextIsolation bridge. No Node primitives leak into the page.
  */
 import { contextBridge, ipcRenderer } from 'electron'
-import { IPC, type WickedCutApi } from '@shared/ipc'
+import { IPC, type ZirtolaApi } from '@shared/ipc'
 import type { RenderJob, Project } from '@shared/types'
 
-const api: WickedCutApi = {
+const api: ZirtolaApi = {
   pickSourceFile: () => ipcRenderer.invoke(IPC.pickSourceFile),
   createProject: (name, sourcePath) => ipcRenderer.invoke(IPC.projectCreate, name, sourcePath),
   openProject: (id) => ipcRenderer.invoke(IPC.projectOpen, id),
@@ -54,4 +54,4 @@ const api: WickedCutApi = {
   }
 }
 
-contextBridge.exposeInMainWorld('wickedcut', api)
+contextBridge.exposeInMainWorld('zirtola', api)

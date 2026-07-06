@@ -36,7 +36,7 @@ export default function GraphicsApproval() {
   async function submit(approvedIds: string[]) {
     setSubmitting(true)
     const edits = items.map(({ approved, ...g }) => g)
-    await window.wickedcut.approveGraphics(project!.id, approvedIds, edits)
+    await window.zirtola.approveGraphics(project!.id, approvedIds, edits)
   }
 
   const approvedCount = items.filter((g) => g.approved).length

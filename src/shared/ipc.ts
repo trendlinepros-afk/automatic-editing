@@ -67,7 +67,7 @@ export const IPC = {
   projectEvent: 'project:event'
 } as const
 
-export interface WickedCutApi {
+export interface ZirtolaApi {
   // Projects
   pickSourceFile(): Promise<string | null>
   createProject(name: string, sourcePath: string): Promise<Project>

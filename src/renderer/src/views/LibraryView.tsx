@@ -8,11 +8,11 @@ export default function LibraryView() {
 
   async function newProject() {
     setError(null)
-    const sourcePath = await window.wickedcut.pickSourceFile()
+    const sourcePath = await window.zirtola.pickSourceFile()
     if (!sourcePath) return
     setCreating(true)
     try {
-      const project = await window.wickedcut.createProject('', sourcePath)
+      const project = await window.zirtola.createProject('', sourcePath)
       await refreshProjects()
       await openProject(project.id)
     } catch (err: any) {
@@ -41,7 +41,7 @@ export default function LibraryView() {
         <div className="panel p-12 text-center">
           <p className="text-ink-400 mb-2">No projects yet.</p>
           <p className="text-sm text-ink-500">
-            Pick a source video to start. WickedCut never modifies your original file — all work happens on copies in
+            Pick a source video to start. Zirtola never modifies your original file — all work happens on copies in
             the project folder.
           </p>
         </div>
@@ -61,7 +61,7 @@ export default function LibraryView() {
                 className="btn-danger btn text-xs"
                 onClick={async () => {
                   if (confirm(`Delete project "${p.name}"? The source video is untouched.`)) {
-                    await window.wickedcut.deleteProject(p.id)
+                    await window.zirtola.deleteProject(p.id)
                     refreshProjects()
                   }
                 }}

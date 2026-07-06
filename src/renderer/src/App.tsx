@@ -14,8 +14,8 @@ export default function App() {
     refreshProjects()
     refreshSettings()
     refreshJobs()
-    const offQueue = window.wickedcut.onQueueEvent(upsertJob)
-    const offProject = window.wickedcut.onProjectEvent(applyProjectPush)
+    const offQueue = window.zirtola.onQueueEvent(upsertJob)
+    const offProject = window.zirtola.onProjectEvent(applyProjectPush)
     return () => {
       offQueue()
       offProject()
@@ -54,7 +54,7 @@ export default function App() {
             refreshProjects()
           }}
         >
-          Wicked<span className="text-signal">Cut</span>
+          Zir<span className="text-signal">tola</span>
         </button>
         {project && (
           <span className="text-sm text-ink-400 truncate max-w-md">

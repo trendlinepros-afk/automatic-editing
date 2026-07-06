@@ -38,7 +38,7 @@ export class S3Host implements FinalVideoHost {
       credentials: { accessKeyId: access, secretAccessKey: secret }
     })
 
-    const key = `wickedcut/${Date.now()}-${path.basename(filePath)}`
+    const key = `zirtola/${Date.now()}-${path.basename(filePath)}`
     onProgress?.(0.05)
     // Stream from disk — final renders can be multi-GB; buffering the whole
     // file would block the main process and can OOM.

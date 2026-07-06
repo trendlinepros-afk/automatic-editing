@@ -20,7 +20,7 @@ export default function RevisionBar() {
     setBusy(true)
     setLastResult(null)
     try {
-      const rev = await window.wickedcut.submitRevision(
+      const rev = await window.zirtola.submitRevision(
         project.id,
         text.trim(),
         selection.region ?? undefined,

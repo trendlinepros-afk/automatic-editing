@@ -26,7 +26,7 @@ export default function RenderQueuePanel() {
                 <span className={`text-[10px] uppercase tracking-wide ${statusColor(j.status)}`}>{j.status}</span>
                 <span className="flex-1" />
                 {(j.status === 'running' || j.status === 'queued') && (
-                  <button className="text-[10px] text-cut hover:underline" onClick={() => window.wickedcut.cancelJob(j.id)}>
+                  <button className="text-[10px] text-cut hover:underline" onClick={() => window.zirtola.cancelJob(j.id)}>
                     cancel
                   </button>
                 )}

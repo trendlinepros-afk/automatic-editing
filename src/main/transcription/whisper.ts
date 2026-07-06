@@ -78,7 +78,7 @@ export async function transcribe(
 
 function mockTranscript(durationSec: number): Transcript {
   const lines = [
-    'Welcome back to the channel, today we are testing WickedCut.',
+    'Welcome back to the channel, today we are testing Zirtola.',
     'This transcript is mock data because no OpenAI key is configured.',
     'Add your key in Settings to run real Whisper transcription.',
     'The pipeline still runs end to end so you can explore the review loop.',

@@ -1,15 +1,17 @@
-# WickedCut
+# Zirtola — AI Video Editor
 
 **AI-assisted video editing for Windows** — by Wicked RC LLC.
 
-WickedCut takes one source video, runs it through a fixed, ordered editing pipeline, renders a low-res preview for human review, supports targeted revisions via a synchronized timeline + transcript, and — after final approval — generates short-form clips via the OpusClip API. It automates the tedious edit pass while keeping a human approval gate and precise manual override. It is **not** a live NLE; it is an automated pipeline with a review-and-revise loop.
+> **App icon:** the desktop/taskbar icon is `build/icon.png` (a 1024×1024 PNG; electron-builder generates the Windows `.ico` from it at build time). A placeholder rendition of the Zirtola logo ships there — **replace `build/icon.png` with the exact logo file** (keep the same path and a square ≥256×256 PNG) and the next build/release picks it up automatically. The Windows installer force-creates a **desktop shortcut** and a Start-menu shortcut on every install and update (`nsis.createDesktopShortcut: "always"`).
+
+Zirtola takes one source video, runs it through a fixed, ordered editing pipeline, renders a low-res preview for human review, supports targeted revisions via a synchronized timeline + transcript, and — after final approval — generates short-form clips via the OpusClip API. It automates the tedious edit pass while keeping a human approval gate and precise manual override. It is **not** a live NLE; it is an automated pipeline with a review-and-revise loop.
 
 ---
 
 ## ⚠️ Read this first — OpusClip plan & hosting requirements
 
 - **OpusClip API access requires a qualifying plan**: Pro Beta, Max, or Business. The API key comes from your OpusClip dashboard.
-- **OpusClip is URL-in, not file-in.** It ingests a *video URL*, so WickedCut must first upload your approved final render somewhere reachable by URL. You configure an **S3-compatible bucket** (AWS S3, Cloudflare R2, Backblaze B2, MinIO, …) in *Settings → Hosting*. Shorts generation is blocked until hosting is configured.
+- **OpusClip is URL-in, not file-in.** It ingests a *video URL*, so Zirtola must first upload your approved final render somewhere reachable by URL. You configure an **S3-compatible bucket** (AWS S3, Cloudflare R2, Backblaze B2, MinIO, …) in *Settings → Hosting*. Shorts generation is blocked until hosting is configured.
 - OpusClip constraints honored by the app: **30 requests/min** rate limit; **~10-credit (≈10 min) minimum** per clip project.
 
 ## Required API keys (Settings → API keys)

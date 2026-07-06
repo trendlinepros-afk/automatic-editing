@@ -45,7 +45,7 @@ export default function PreviewPlayer() {
             className="btn btn-primary text-xs"
             onClick={async () => {
               if (confirm('Approve the final edit? You can still export and generate shorts afterward.')) {
-                await window.wickedcut.approveFinal(project.id)
+                await window.zirtola.approveFinal(project.id)
               }
             }}
           >
@@ -55,7 +55,7 @@ export default function PreviewPlayer() {
         {project?.approved && (
           <>
             {EXPORT_PRESETS.map((p) => (
-              <button key={p.id} className="btn text-xs" onClick={() => window.wickedcut.exportFinal(project.id, p.id)}>
+              <button key={p.id} className="btn text-xs" onClick={() => window.zirtola.exportFinal(project.id, p.id)}>
                 Export {p.label}
               </button>
             ))}

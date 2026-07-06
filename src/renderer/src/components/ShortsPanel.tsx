@@ -42,7 +42,7 @@ export default function ShortsPanel() {
       <button
         className="btn btn-primary"
         disabled={!canGenerate || !hostingReady || !keyReady}
-        onClick={() => window.wickedcut.generateShorts(project.id)}
+        onClick={() => window.zirtola.generateShorts(project.id)}
       >
         Upload final render & generate shorts
       </button>
@@ -58,7 +58,7 @@ export default function ShortsPanel() {
             {s.status === 'processing' && (
               <button
                 className="btn text-xs"
-                onClick={async () => applyProjectPush(await window.wickedcut.refreshShorts(project.id))}
+                onClick={async () => applyProjectPush(await window.zirtola.refreshShorts(project.id))}
               >
                 Refresh
               </button>

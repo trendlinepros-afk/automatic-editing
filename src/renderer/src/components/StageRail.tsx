@@ -22,12 +22,12 @@ export default function StageRail() {
   async function startPipeline() {
     if (!project) return
     if (!project.transcript) {
-      const est = await window.wickedcut.estimateTranscription(project.id)
+      const est = await window.zirtola.estimateTranscription(project.id)
       setEstimate(est)
       setConfirming(true)
       return
     }
-    window.wickedcut.runPipeline(project.id)
+    window.zirtola.runPipeline(project.id)
   }
 
   return (
@@ -50,7 +50,7 @@ export default function StageRail() {
               className="btn btn-primary text-xs"
               onClick={() => {
                 setConfirming(false)
-                window.wickedcut.runPipeline(project.id)
+                window.zirtola.runPipeline(project.id)
               }}
             >
               Run
@@ -76,7 +76,7 @@ export default function StageRail() {
               {(st.status === 'done' || st.status === 'stale' || st.status === 'error') && (
                 <button
                   className="text-[10px] text-signal hover:underline"
-                  onClick={() => window.wickedcut.runStage(project.id, id)}
+                  onClick={() => window.zirtola.runStage(project.id, id)}
                   title="Re-run this stage only"
                 >
                   re-run

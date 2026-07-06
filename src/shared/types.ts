@@ -1,5 +1,5 @@
 /**
- * WickedCut shared types — the EDL (edit decision list) data model, project
+ * Zirtola shared types — the EDL (edit decision list) data model, project
  * state, pipeline stages, AI routing, and render queue contracts.
  *
  * The EDL is the single source of truth for every edit decision. Pipeline

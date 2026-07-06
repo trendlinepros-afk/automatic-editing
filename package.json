@@ -1,8 +1,8 @@
 {
-  "name": "wickedcut",
-  "productName": "WickedCut",
+  "name": "zirtola",
+  "productName": "Zirtola",
   "version": "0.1.0",
-  "description": "AI-assisted video editing pipeline with human review — by Wicked RC LLC",
+  "description": "Zirtola — AI Video Editor. AI-assisted video editing pipeline with human review, by Wicked RC LLC",
   "main": "out/main/index.js",
   "author": "Wicked RC LLC",
   "license": "UNLICENSED",
@@ -17,9 +17,10 @@
   },
   "build": {
     "appId": "com.wickedrc.wickedcut",
-    "productName": "WickedCut",
+    "productName": "Zirtola",
     "directories": {
-      "output": "release"
+      "output": "release",
+      "buildResources": "build"
     },
     "files": [
       "out/**/*",
@@ -33,11 +34,15 @@
       "target": [
         "nsis"
       ],
-      "artifactName": "WickedCut-Setup-${version}.exe"
+      "icon": "build/icon.png",
+      "artifactName": "Zirtola-Setup-${version}.exe"
     },
     "nsis": {
       "oneClick": false,
-      "allowToChangeInstallationDirectory": true
+      "allowToChangeInstallationDirectory": true,
+      "shortcutName": "Zirtola",
+      "createDesktopShortcut": "always",
+      "createStartMenuShortcut": true
     },
     "publish": [
       {

@@ -13,7 +13,7 @@ export default function FirstRunView() {
 
   async function choose() {
     setError(null)
-    const picked = await window.wickedcut.pickDirectory()
+    const picked = await window.zirtola.pickDirectory()
     if (picked) setDir(picked)
   }
 
@@ -32,7 +32,7 @@ export default function FirstRunView() {
     <div className="h-screen flex items-center justify-center bg-ink-950 p-8">
       <div className="panel max-w-xl w-full p-8">
         <h1 className="font-display text-3xl font-bold text-ink-50 mb-1">
-          Welcome to Wicked<span className="text-signal">Cut</span>
+          Welcome to Zir<span className="text-signal">tola</span>
         </h1>
         <p className="text-sm text-ink-400 mb-6">
           First, choose a <b className="text-ink-200">master folder</b>. Every project you create — and all its
