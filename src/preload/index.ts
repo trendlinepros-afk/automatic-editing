@@ -8,7 +8,9 @@ import type { RenderJob, Project } from '@shared/types'
 
 const api: ZirtolaApi = {
   pickSourceFile: () => ipcRenderer.invoke(IPC.pickSourceFile),
+  pickProjectFile: () => ipcRenderer.invoke(IPC.pickProjectFile),
   createProject: (name, sourcePath) => ipcRenderer.invoke(IPC.projectCreate, name, sourcePath),
+  importProject: (filePath) => ipcRenderer.invoke(IPC.projectImport, filePath),
   openProject: (id) => ipcRenderer.invoke(IPC.projectOpen, id),
   listProjects: () => ipcRenderer.invoke(IPC.projectList),
   deleteProject: (id) => ipcRenderer.invoke(IPC.projectDelete, id),

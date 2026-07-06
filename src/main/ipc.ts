@@ -8,6 +8,7 @@ import path from 'path'
 import { IPC } from '@shared/ipc'
 import type { AppSettings, EDL, GraphicEvent, StageId, TimeRegion } from '@shared/types'
 import * as projects from './project'
+import { ensureLayout, masterDir } from './storage'
 import { getSettingsStore, type SecretName } from './settings'
 import { renderQueue, enqueueAndWait } from './queue'
 import {
@@ -39,7 +40,17 @@ export function registerIpc(): void {
     return res.canceled ? null : res.filePaths[0]
   })
 
+  ipcMain.handle(IPC.pickProjectFile, async () => {
+    const res = await dialog.showOpenDialog({
+      title: 'Open a Zirtola project',
+      filters: [{ name: 'Zirtola project', extensions: ['json'] }],
+      properties: ['openFile']
+    })
+    return res.canceled ? null : res.filePaths[0]
+  })
+
   ipcMain.handle(IPC.projectCreate, (_e, name: string, sourcePath: string) => projects.createProject(name, sourcePath))
+  ipcMain.handle(IPC.projectImport, (_e, filePath: string) => projects.importProjectFromFile(filePath))
   ipcMain.handle(IPC.projectOpen, (_e, id: string) => projects.openProject(id))
   ipcMain.handle(IPC.projectList, () => projects.listProjects())
   ipcMain.handle(IPC.projectDelete, (_e, id: string) => projects.deleteProject(id))
@@ -140,14 +151,20 @@ export function registerIpc(): void {
 
   ipcMain.handle(IPC.settingsSetProjectsDir, (_e, dir: string | null) => {
     const store = getSettingsStore()
+    let saved
     if (dir) {
       // Validate we can actually create/write the chosen folder before saving.
       fs.mkdirSync(dir, { recursive: true })
       fs.accessSync(dir, fs.constants.W_OK)
-      return store.update({ projectsDir: dir, onboarded: true })
+      saved = store.update({ projectsDir: dir, onboarded: true })
+    } else {
+      // null → accept the default location under user-data.
+      saved = store.update({ onboarded: true })
     }
-    // null → accept the default location under user-data.
-    return store.update({ onboarded: true })
+    // Scan the master folder for Projects/ and Assets/ subfolders, mapping to
+    // them if present and creating them if not.
+    ensureLayout(masterDir())
+    return saved
   })
 
   ipcMain.handle(IPC.settingsPickFont, async () => {

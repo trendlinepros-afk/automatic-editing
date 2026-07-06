@@ -51,7 +51,8 @@ export default function FirstRunView() {
             </button>
           </div>
           <p className="text-[11px] text-ink-500 mt-2">
-            Pick a drive with plenty of free space — video renders are large. You can change this later in Settings.
+            Pick a drive with plenty of free space — video renders are large. Zirtola creates <b>Projects</b> and{' '}
+            <b>Assets</b> subfolders inside it. You can change this later.
           </p>
         </div>
 

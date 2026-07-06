@@ -3,23 +3,15 @@
  * mirroring, and the working-folder layout. Source files are NEVER modified;
  * everything happens inside the project work dir.
  */
-import { app } from 'electron'
 import fs from 'fs'
 import path from 'path'
 import { newId } from '@shared/id'
 import { probe } from './media/ffmpeg'
 import { getSettingsStore } from './settings'
+import { projectsRoot } from './storage'
 import { saveProjectRow, getProjectRow, listProjectRows, deleteProjectRow } from './db'
 import { renderQueue } from './queue'
 import { STAGE_ORDER, type EDL, type Project, type ProjectSummary, type StageId, type StageState } from '@shared/types'
-
-function projectsRoot(): string {
-  // The user's chosen master folder (first-run), or a default under user-data.
-  const configured = getSettingsStore().getSettings().projectsDir
-  const dir = configured || path.join(app.getPath('userData'), 'projects')
-  fs.mkdirSync(dir, { recursive: true })
-  return dir
-}
 
 /**
  * In-memory registry: ONE canonical Project object per id. Long-running
@@ -107,10 +99,15 @@ export function openProject(id: string): Project {
   const cached = live.get(id)
   if (cached) return cached
 
+  // Prefer the workDir recorded in the DB mirror — projects created under an
+  // older folder layout, or imported from another location, don't live under
+  // the current projectsRoot(). Fall back to the derived path for a first read.
+  const row = getProjectRow(id)
+  const workDir = row?.workDir ?? path.join(projectsRoot(), id)
+  const file = path.join(workDir, 'project.json')
+
   // JSON file is the source of truth; the SQLite row is the recovery path
   // for a missing OR corrupt file (e.g. truncated by power loss).
-  const workDir = path.join(projectsRoot(), id)
-  const file = path.join(workDir, 'project.json')
   let project: Project | null = null
   if (fs.existsSync(file)) {
     try {
@@ -119,7 +116,7 @@ export function openProject(id: string): Project {
       console.warn(`[project] ${id}: project.json is corrupt, recovering from database mirror`)
     }
   }
-  project ??= getProjectRow(id)
+  project ??= row
   if (!project) {
     throw new Error('Project not found. Its files may have been deleted from disk.')
   }
@@ -127,8 +124,38 @@ export function openProject(id: string): Project {
   return project
 }
 
+/**
+ * Open a project the user picked manually (its project.json) from anywhere on
+ * disk. The folder may have been moved, so we trust the file's current
+ * location as the work dir and re-register it in the index so it shows up in
+ * the recent-projects list.
+ */
+export function importProjectFromFile(filePath: string): Project {
+  let project: Project
+  try {
+    project = JSON.parse(fs.readFileSync(filePath, 'utf-8'))
+  } catch {
+    throw new Error('That file could not be read as a Zirtola project (expected a project.json).')
+  }
+  if (!project?.id || !project?.source || !project?.edl) {
+    throw new Error('That file is not a valid Zirtola project (project.json).')
+  }
+  project.workDir = path.dirname(path.resolve(filePath))
+  live.set(project.id, project)
+  // Persists the corrected workDir and re-indexes the row for the library list.
+  saveProject(project)
+  return project
+}
+
 export function listProjects(): ProjectSummary[] {
   return listProjectRows()
+}
+
+/** Work dirs of currently-open projects — the wcmedia:// handler allows these
+ *  so a project imported from outside the master folder can still stream its
+ *  preview. */
+export function openProjectWorkDirs(): string[] {
+  return [...live.values()].map((p) => p.workDir)
 }
 
 /** True while the project is open in the registry and its folder exists —
@@ -140,6 +167,9 @@ export function projectAlive(id: string): boolean {
 }
 
 export function deleteProject(id: string): void {
+  // Resolve the real work dir BEFORE forgetting the project — imported or
+  // legacy-layout projects don't live under the current projectsRoot().
+  const record = live.get(id) ?? getProjectRow(id)
   live.delete(id)
   // Cancel any queued/running jobs for this project first — otherwise a live
   // FFmpeg keeps writing into the folder we're about to remove and holds the
@@ -150,6 +180,6 @@ export function deleteProject(id: string): void {
     }
   }
   deleteProjectRow(id)
-  const workDir = path.join(projectsRoot(), id)
+  const workDir = record?.workDir ?? path.join(projectsRoot(), id)
   if (fs.existsSync(workDir)) fs.rmSync(workDir, { recursive: true, force: true })
 }

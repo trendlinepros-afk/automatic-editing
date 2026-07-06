@@ -7,6 +7,14 @@ import url from 'url'
 import { registerIpc } from './ipc'
 import { initDb } from './db'
 import { getSettingsStore } from './settings'
+import { openProjectWorkDirs } from './project'
+import { migrateLegacyUserData } from './migrate'
+
+// Pin the userData directory name so it can NEVER move again if the product's
+// display name changes (as it did in the WickedCut → Zirtola rebrand). All
+// settings, keys, and the project index live under %APPDATA%\Zirtola and must
+// stay there across every future update.
+app.setName('Zirtola')
 
 // Register a privileged scheme so the renderer can play files from project
 // work dirs (preview.mp4 etc.) without disabling webSecurity.
@@ -21,6 +29,9 @@ function mediaRoots(): string[] {
   const roots = [path.resolve(app.getPath('userData'))]
   const dir = getSettingsStore().getSettings().projectsDir
   if (dir) roots.push(path.resolve(dir))
+  // Projects opened from outside the master folder (via "Open Project…") stream
+  // their preview from their own work dir.
+  for (const wd of openProjectWorkDirs()) roots.push(path.resolve(wd))
   return roots
 }
 
@@ -107,6 +118,8 @@ if (!gotLock) {
       }
     })
 
+    // Recover settings orphaned by the rebrand (no-op once set up here).
+    migrateLegacyUserData()
     initDb()
     getSettingsStore()
     registerIpc()

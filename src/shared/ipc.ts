@@ -25,7 +25,9 @@ export const IPC = {
   projectList: 'project:list',
   projectSave: 'project:save',
   projectDelete: 'project:delete',
+  projectImport: 'project:import',
   pickSourceFile: 'project:pick-source',
+  pickProjectFile: 'project:pick-file',
 
   // Pipeline
   pipelineRun: 'pipeline:run',
@@ -70,7 +72,11 @@ export const IPC = {
 export interface ZirtolaApi {
   // Projects
   pickSourceFile(): Promise<string | null>
+  /** Pick a project.json from disk to open an existing project manually. */
+  pickProjectFile(): Promise<string | null>
   createProject(name: string, sourcePath: string): Promise<Project>
+  /** Open a project the user picked from disk (its project.json). */
+  importProject(filePath: string): Promise<Project>
   openProject(id: string): Promise<Project>
   listProjects(): Promise<ProjectSummary[]>
   deleteProject(id: string): Promise<void>
