@@ -39,6 +39,7 @@ const api: WickedCutApi = {
   getSettings: () => ipcRenderer.invoke(IPC.settingsGet),
   updateSettings: (patch) => ipcRenderer.invoke(IPC.settingsUpdate, patch),
   setApiKey: (name, value) => ipcRenderer.invoke(IPC.settingsSetKey, name, value),
+  setProjectsDir: (dir) => ipcRenderer.invoke(IPC.settingsSetProjectsDir, dir),
   pickFontFile: () => ipcRenderer.invoke(IPC.settingsPickFont),
   pickDirectory: () => ipcRenderer.invoke(IPC.settingsPickDir),
   pickLogoFile: () => ipcRenderer.invoke(IPC.settingsPickLogo),

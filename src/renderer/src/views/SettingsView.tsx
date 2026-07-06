@@ -21,6 +21,7 @@ export default function SettingsView() {
     <div className="h-full overflow-y-auto">
       <div className="p-8 max-w-3xl mx-auto space-y-8">
         <h1 className="font-display text-2xl font-bold text-ink-50">Settings</h1>
+        <ProjectStorage />
         <ApiKeys />
         <Routing />
         <PipelineTuning />
@@ -54,6 +55,32 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
 }
 
 // ---------------------------------------------------------------------------
+
+function ProjectStorage() {
+  const { settings, completeOnboarding } = useStore()
+  if (!settings) return null
+  return (
+    <Section
+      title="Project storage"
+      hint="The master folder where all projects and their renders live. Changing it affects new projects; existing projects stay where they were created."
+    >
+      <Row label="Projects folder">
+        <span className="text-xs text-ink-500 truncate flex-1">
+          {settings.projectsDir ?? 'Default location (app data folder)'}
+        </span>
+        <button
+          className="btn text-xs"
+          onClick={async () => {
+            const dir = await window.wickedcut.pickDirectory()
+            if (dir) await completeOnboarding(dir)
+          }}
+        >
+          Change…
+        </button>
+      </Row>
+    </Section>
+  )
+}
 
 function ApiKeys() {
   const { settings, refreshSettings } = useStore()

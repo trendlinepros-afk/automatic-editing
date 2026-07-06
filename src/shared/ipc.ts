@@ -54,6 +54,7 @@ export const IPC = {
   settingsGet: 'settings:get',
   settingsUpdate: 'settings:update',
   settingsSetKey: 'settings:set-key',
+  settingsSetProjectsDir: 'settings:set-projects-dir',
   settingsPickFont: 'settings:pick-font',
   settingsPickDir: 'settings:pick-dir',
   settingsPickLogo: 'settings:pick-logo',
@@ -106,6 +107,9 @@ export interface WickedCutApi {
   getSettings(): Promise<AppSettings>
   updateSettings(patch: Partial<AppSettings>): Promise<AppSettings>
   setApiKey(name: 'gemini' | 'openai' | 'deepseek' | 'opusclip' | 's3-access' | 's3-secret', value: string): Promise<void>
+  /** Set the master projects folder and mark onboarding complete. Pass null to
+   *  accept the default location. */
+  setProjectsDir(dir: string | null): Promise<AppSettings>
   pickFontFile(): Promise<{ name: string; path: string } | null>
   pickDirectory(): Promise<string | null>
   pickLogoFile(): Promise<string | null>

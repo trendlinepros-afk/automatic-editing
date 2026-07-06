@@ -3,10 +3,11 @@ import { useStore } from './state/store'
 import LibraryView from './views/LibraryView'
 import EditorView from './views/EditorView'
 import SettingsView from './views/SettingsView'
+import FirstRunView from './views/FirstRunView'
 import RenderQueuePanel from './components/RenderQueuePanel'
 
 export default function App() {
-  const { view, setView, project, closeProject, refreshProjects, refreshSettings, refreshJobs, upsertJob, applyProjectPush } =
+  const { view, setView, project, settings, closeProject, refreshProjects, refreshSettings, refreshJobs, upsertJob, applyProjectPush } =
     useStore()
 
   useEffect(() => {
@@ -37,6 +38,10 @@ export default function App() {
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [])
+
+  // Wait for settings before deciding; then gate on first-run onboarding.
+  if (!settings) return <div className="h-screen bg-ink-950" />
+  if (!settings.onboarded) return <FirstRunView />
 
   return (
     <div className="h-screen flex flex-col">

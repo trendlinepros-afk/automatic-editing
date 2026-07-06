@@ -298,6 +298,11 @@ export interface AIRoutingConfig {
 // ---------------------------------------------------------------------------
 
 export interface AppSettings {
+  /** False until the user has completed first-run setup (picked a folder). */
+  onboarded: boolean
+  /** Master folder where all projects + intermediate renders live. When unset,
+   *  a default under the app's user-data directory is used. */
+  projectsDir?: string
   /** Which keys exist — the values never cross the IPC boundary. */
   keysPresent: Record<'gemini' | 'openai' | 'deepseek' | 'opusclip', boolean>
   routing: AIRoutingConfig

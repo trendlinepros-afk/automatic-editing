@@ -13,7 +13,9 @@ import { saveProjectRow, getProjectRow, listProjectRows, deleteProjectRow } from
 import { STAGE_ORDER, type EDL, type Project, type ProjectSummary, type StageId, type StageState } from '@shared/types'
 
 function projectsRoot(): string {
-  const dir = path.join(app.getPath('userData'), 'projects')
+  // The user's chosen master folder (first-run), or a default under user-data.
+  const configured = getSettingsStore().getSettings().projectsDir
+  const dir = configured || path.join(app.getPath('userData'), 'projects')
   fs.mkdirSync(dir, { recursive: true })
   return dir
 }

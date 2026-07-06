@@ -3,6 +3,7 @@
  * Secrets never cross this boundary; only presence booleans do.
  */
 import { BrowserWindow, dialog, ipcMain } from 'electron'
+import fs from 'fs'
 import path from 'path'
 import { IPC } from '@shared/ipc'
 import type { AppSettings, EDL, GraphicEvent, StageId, TimeRegion } from '@shared/types'
@@ -132,6 +133,18 @@ export function registerIpc(): void {
   ipcMain.handle(IPC.settingsGet, () => getSettingsStore().getSettings())
   ipcMain.handle(IPC.settingsUpdate, (_e, patch: Partial<AppSettings>) => getSettingsStore().update(patch))
   ipcMain.handle(IPC.settingsSetKey, (_e, name: SecretName, value: string) => getSettingsStore().setSecret(name, value))
+
+  ipcMain.handle(IPC.settingsSetProjectsDir, (_e, dir: string | null) => {
+    const store = getSettingsStore()
+    if (dir) {
+      // Validate we can actually create/write the chosen folder before saving.
+      fs.mkdirSync(dir, { recursive: true })
+      fs.accessSync(dir, fs.constants.W_OK)
+      return store.update({ projectsDir: dir, onboarded: true })
+    }
+    // null → accept the default location under user-data.
+    return store.update({ onboarded: true })
+  })
 
   ipcMain.handle(IPC.settingsPickFont, async () => {
     const res = await dialog.showOpenDialog({

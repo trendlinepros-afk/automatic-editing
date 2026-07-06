@@ -26,6 +26,7 @@ const DEFAULT_BRAND: BrandKit = {
 }
 
 const DEFAULTS: AppSettings = {
+  onboarded: false,
   keysPresent: { gemini: false, openai: false, deepseek: false, opusclip: false },
   routing: {
     taskProviders: {

@@ -65,6 +65,7 @@ interface Store {
   settings: AppSettings | null
   refreshSettings: () => Promise<void>
   saveSettings: (patch: Partial<AppSettings>) => Promise<void>
+  completeOnboarding: (dir: string | null) => Promise<void>
 }
 
 export const useStore = create<Store>((set, get) => {
@@ -171,6 +172,7 @@ export const useStore = create<Store>((set, get) => {
 
     settings: null,
     refreshSettings: async () => set({ settings: await window.wickedcut.getSettings() }),
-    saveSettings: async (patch) => set({ settings: await window.wickedcut.updateSettings(patch) })
+    saveSettings: async (patch) => set({ settings: await window.wickedcut.updateSettings(patch) }),
+    completeOnboarding: async (dir) => set({ settings: await window.wickedcut.setProjectsDir(dir) })
   }
 })
