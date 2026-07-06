@@ -28,7 +28,7 @@ import { saveProject } from '../project'
 import { enqueueAndWait, type JobContext } from '../queue'
 import { detectSilence, silencesToCuts } from '../media/silence'
 import { detectSceneChanges } from '../media/scenes'
-import { applyCuts, applyTransitions, compositeGraphics, mixAudio, exportPreview } from '../media/render'
+import { applyCuts, applyTransitions, compositeGraphics, mixAudio, exportPreview, requireSource } from '../media/render'
 import { buildAssFile } from '../media/captions'
 import { transcribe, estimateCost } from '../transcription/whisper'
 import { reviewCuts, planGraphics } from '../ai/tasks'
@@ -71,7 +71,7 @@ export function markStaleForEdlChange(project: Project, before: EDL, after: EDL)
 
 /** Keep-segments derived from current validated cuts. */
 export function keepSegments(project: Project): TimeRegion[] {
-  return cutsToKeepSegments(project.edl.cuts, project.source.durationSec)
+  return cutsToKeepSegments(project.edl.cuts, project.source?.durationSec ?? 0)
 }
 
 /**
@@ -115,15 +115,16 @@ function speechRegionsTrimmed(project: Project, keep: TimeRegion[]): TimeRegion[
 // ---------------------------------------------------------------------------
 
 async function stageCutDetect(project: Project, ctx: JobContext): Promise<void> {
+  const source = requireSource(project)
   const cfg = getSettingsStore().getSettings().silence
 
   // Transcription happens up front (needed by stages 2, 4, 5, captions).
   if (!project.transcript) {
     ctx.progress(0.05, 'Transcribing audio…')
     project.transcript = await transcribe(
-      project.source.path,
+      source.path,
       project.workDir,
-      project.source.durationSec,
+      source.durationSec,
       ctx.signal,
       (f) => ctx.progress(0.05 + f * 0.45, 'Transcribing audio…')
     )
@@ -131,7 +132,7 @@ async function stageCutDetect(project: Project, ctx: JobContext): Promise<void> 
   }
 
   ctx.progress(0.55, 'Detecting silence…')
-  const silences = await detectSilence(project.source.path, cfg, project.source.durationSec, ctx.signal)
+  const silences = await detectSilence(source.path, cfg, source.durationSec, ctx.signal)
   // Keep the user's manual cuts AND revision-driven cuts; replace only prior
   // pipeline-proposed silence cuts (so a stage-1 re-run can't wipe an
   // 'add-cut' revision the user just made).
@@ -308,7 +309,8 @@ async function stagePreview(project: Project, ctx: JobContext): Promise<void> {
   ctx.progress(0.1, 'Rendering 540p preview…')
   // Preview keeps the source aspect ratio (scale=-2:540); match the ASS canvas.
   const previewH = 540
-  const previewW = Math.max(2, Math.round((previewH * project.source.width) / Math.max(1, project.source.height)))
+  const src = requireSource(project)
+  const previewW = Math.max(2, Math.round((previewH * src.width) / Math.max(1, src.height)))
   const ass = project.transcript
     ? buildAssFile(project.workDir, project.transcript, project.edl.captions, project.brandKit, renderKeep(project), {
         width: previewW,
@@ -441,5 +443,5 @@ export async function replanGraphics(project: Project): Promise<void> {
 }
 
 export function transcriptEstimate(project: Project): { minutes: number; estUsd: number } {
-  return estimateCost(project.source.durationSec)
+  return estimateCost(project.source?.durationSec ?? 0)
 }

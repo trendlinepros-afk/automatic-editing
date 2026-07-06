@@ -57,8 +57,8 @@ export function saveProjectRow(p: Project): void {
       name: p.name,
       createdAt: p.createdAt,
       updatedAt: p.updatedAt,
-      sourcePath: p.source.path,
-      durationSec: p.source.durationSec,
+      sourcePath: p.source?.path ?? '',
+      durationSec: p.source?.durationSec ?? 0,
       approved: p.approved ? 1 : 0,
       json: JSON.stringify(p)
     })
@@ -113,8 +113,8 @@ function summarize(p: Project): ProjectSummary {
     name: p.name,
     createdAt: p.createdAt,
     updatedAt: p.updatedAt,
-    sourcePath: p.source.path,
-    durationSec: p.source.durationSec,
+    sourcePath: p.source?.path ?? '',
+    durationSec: p.source?.durationSec ?? 0,
     approved: p.approved
   }
 }

@@ -10,6 +10,7 @@ const api: ZirtolaApi = {
   pickSourceFile: () => ipcRenderer.invoke(IPC.pickSourceFile),
   pickProjectFile: () => ipcRenderer.invoke(IPC.pickProjectFile),
   createProject: (name, sourcePath) => ipcRenderer.invoke(IPC.projectCreate, name, sourcePath),
+  setProjectSource: (id, sourcePath) => ipcRenderer.invoke(IPC.projectSetSource, id, sourcePath),
   importProject: (filePath) => ipcRenderer.invoke(IPC.projectImport, filePath),
   openProject: (id) => ipcRenderer.invoke(IPC.projectOpen, id),
   listProjects: () => ipcRenderer.invoke(IPC.projectList),
@@ -53,6 +54,12 @@ const api: ZirtolaApi = {
     const listener = (_e: unknown, project: Project) => cb(project)
     ipcRenderer.on(IPC.projectEvent, listener)
     return () => ipcRenderer.removeListener(IPC.projectEvent, listener)
+  },
+
+  onMenuCheckUpdates: (cb) => {
+    const listener = () => cb()
+    ipcRenderer.on(IPC.menuCheckUpdates, listener)
+    return () => ipcRenderer.removeListener(IPC.menuCheckUpdates, listener)
   }
 }
 

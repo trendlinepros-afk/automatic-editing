@@ -6,11 +6,18 @@ import Transcript from '../components/Transcript'
 import RevisionBar from '../components/RevisionBar'
 import GraphicsApproval from '../components/GraphicsApproval'
 import ShortsPanel from '../components/ShortsPanel'
+import AttachSource from '../components/AttachSource'
 
 export default function EditorView({ shortsMode = false }: { shortsMode?: boolean }) {
   const project = useStore((s) => s.project)
   if (!project) {
     return <div className="p-8 text-ink-500">No project open. Go back to the library and pick one.</div>
+  }
+
+  // A freshly-named project has no footage yet — prompt to attach it before
+  // the editor (preview / timeline / pipeline all need a source video).
+  if (!project.source) {
+    return <AttachSource />
   }
 
   if (shortsMode) {

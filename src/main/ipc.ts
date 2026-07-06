@@ -49,7 +49,8 @@ export function registerIpc(): void {
     return res.canceled ? null : res.filePaths[0]
   })
 
-  ipcMain.handle(IPC.projectCreate, (_e, name: string, sourcePath: string) => projects.createProject(name, sourcePath))
+  ipcMain.handle(IPC.projectCreate, (_e, name: string, sourcePath?: string) => projects.createProject(name, sourcePath))
+  ipcMain.handle(IPC.projectSetSource, (_e, id: string, sourcePath: string) => projects.setProjectSource(id, sourcePath))
   ipcMain.handle(IPC.projectImport, (_e, filePath: string) => projects.importProjectFromFile(filePath))
   ipcMain.handle(IPC.projectOpen, (_e, id: string) => projects.openProject(id))
   ipcMain.handle(IPC.projectList, () => projects.listProjects())

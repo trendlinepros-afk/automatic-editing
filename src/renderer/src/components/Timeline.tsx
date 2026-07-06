@@ -35,15 +35,15 @@ export default function Timeline() {
   const keep = useMemo(
     () =>
       project
-        ? (project.trimKeep ?? cutsToKeepSegments(project.edl.cuts, project.source.durationSec))
+        ? (project.trimKeep ?? cutsToKeepSegments(project.edl.cuts, project.source?.durationSec ?? 0))
         : [],
-    [project?.trimKeep, project?.edl.version, project?.source.durationSec]
+    [project?.trimKeep, project?.edl.version, project?.source?.durationSec]
   )
 
   // NOTE: the null-project guard is deferred until AFTER every hook below
   // (the window-listener useEffect) so hooks run unconditionally. These
   // non-hook consts are null-safe; the JSX (which uses project) is gated.
-  const duration = project ? project.source.durationSec || 1 : 1
+  const duration = project ? project.source?.durationSec || 1 : 1
 
   const pxToTime = (clientX: number): number => {
     const rect = trackRef.current!.getBoundingClientRect()

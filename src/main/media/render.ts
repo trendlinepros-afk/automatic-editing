@@ -8,7 +8,13 @@ import fs from 'fs'
 import { runFFmpeg, hasNvenc, type RunOptions } from './ffmpeg'
 import { getSettingsStore } from '../settings'
 import { cutsToKeepSegments, sourceToTrimmedTime } from '@shared/timemap'
-import type { ExportPreset, Project, TimeRegion } from '@shared/types'
+import type { ExportPreset, Project, SourceInfo, TimeRegion } from '@shared/types'
+
+/** A project can exist before footage is attached; render paths require it. */
+export function requireSource(project: Project): SourceInfo {
+  if (!project.source) throw new Error('Attach a source video to this project before running the pipeline.')
+  return project.source
+}
 
 /** NVENC is used only when available AND the user's preference allows it. */
 async function useNvenc(): Promise<boolean> {
@@ -23,7 +29,8 @@ export async function applyCuts(
   project: Project,
   opts: RunOptions
 ): Promise<{ outPath: string; keep: TimeRegion[] }> {
-  const keep = cutsToKeepSegments(project.edl.cuts, project.source.durationSec)
+  const source = requireSource(project)
+  const keep = cutsToKeepSegments(project.edl.cuts, source.durationSec)
   const outPath = path.join(project.workDir, 'trimmed.mp4')
   if (keep.length === 0) throw new Error('Cut list removes the entire video — nothing left to keep.')
 
@@ -32,11 +39,11 @@ export async function applyCuts(
   // must NOT get an -af/-c:a (ffmpeg errors on a missing audio input).
   const expr = keep.map((k) => `between(t,${k.start.toFixed(3)},${k.end.toFixed(3)})`).join('+')
   const args = [
-    '-i', project.source.path,
+    '-i', source.path,
     '-vf', `select='${expr}',setpts=N/FRAME_RATE/TB`,
-    ...(project.source.hasAudio ? ['-af', `aselect='${expr}',asetpts=N/SR/TB`] : []),
+    ...(source.hasAudio ? ['-af', `aselect='${expr}',asetpts=N/SR/TB`] : []),
     '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '16',
-    ...(project.source.hasAudio ? ['-c:a', 'aac', '-b:a', '192k'] : ['-an']),
+    ...(source.hasAudio ? ['-c:a', 'aac', '-b:a', '192k'] : ['-an']),
     outPath
   ]
   await runFFmpeg(args, { ...opts, totalSec: keep.reduce((a, k) => a + (k.end - k.start), 0) })
@@ -71,7 +78,7 @@ export async function applyTransitions(
   // Crossfade at a hard boundary of an already-joined file is approximated
   // the same way (a true crossfade needs the pre-join segments — tracked in
   // the EDL for a future segment-wise renderer).
-  const { width, height } = project.source
+  const { width, height } = requireSource(project)
   const parts: string[] = []
   let prev = '[0:v]'
   transitions.forEach((t, i) => {
@@ -182,7 +189,7 @@ export async function mixAudio(
     .filter((m) => m.region.end - m.region.start > 0.05)
   const sfx = project.edl.sfx.map((s) => ({ ...s, at: sourceToTrimmedTime(s.at, keep) }))
   const outPath = path.join(project.workDir, 'mixed.mp4')
-  if ((music.length === 0 && sfx.length === 0) || !project.source.hasAudio) {
+  if ((music.length === 0 && sfx.length === 0) || !project.source?.hasAudio) {
     // Nothing to mix (or the base has no audio to mix onto) — pass through.
     fs.copyFileSync(inPath, outPath)
     return outPath

@@ -18,9 +18,9 @@ export default function Transcript() {
   const keep = useMemo(
     () =>
       project
-        ? (project.trimKeep ?? cutsToKeepSegments(project.edl.cuts, project.source.durationSec))
+        ? (project.trimKeep ?? cutsToKeepSegments(project.edl.cuts, project.source?.durationSec ?? 0))
         : [],
-    [project?.trimKeep, project?.edl.version, project?.source.durationSec]
+    [project?.trimKeep, project?.edl.version, project?.source?.durationSec]
   )
 
   // Non-rejected cut regions, sorted — used to strike words that will be removed.

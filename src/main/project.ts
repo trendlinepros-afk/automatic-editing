@@ -48,18 +48,46 @@ function freshStages(): Record<StageId, StageState> {
   >
 }
 
-export async function createProject(name: string, sourcePath: string): Promise<Project> {
-  if (!fs.existsSync(sourcePath)) {
-    throw new Error(`Source file not found: ${sourcePath}. Pick the file again.`)
+/** Turn a project name into a safe, human-readable folder name, unique inside
+ *  the Projects/ root (appends a counter on collision). */
+function projectFolder(root: string, name: string): string {
+  const base =
+    name
+      .trim()
+      .replace(/[<>:"/\\|?*\x00-\x1f]/g, ' ') // strip characters illegal in Windows paths
+      .replace(/\s+/g, ' ')
+      .replace(/[. ]+$/g, '') // Windows forbids trailing dots/spaces
+      .slice(0, 80)
+      .trim() || 'Untitled project'
+  let candidate = base
+  let n = 2
+  while (fs.existsSync(path.join(root, candidate))) {
+    candidate = `${base} (${n++})`
   }
-  const source = await probe(sourcePath)
+  return path.join(root, candidate)
+}
+
+/**
+ * Create a project. A source video is optional at creation — a freshly named
+ * project gets its own folder inside Projects/ immediately, and the user
+ * attaches footage afterward (setProjectSource).
+ */
+export async function createProject(name: string, sourcePath?: string): Promise<Project> {
+  let source
+  if (sourcePath) {
+    if (!fs.existsSync(sourcePath)) {
+      throw new Error(`Source file not found: ${sourcePath}. Pick the file again.`)
+    }
+    source = await probe(sourcePath)
+  }
   const id = newId('proj')
-  const workDir = path.join(projectsRoot(), id)
+  const displayName = name.trim() || (sourcePath ? path.parse(sourcePath).name : 'Untitled project')
+  const workDir = projectFolder(projectsRoot(), displayName)
   fs.mkdirSync(workDir, { recursive: true })
 
   const project: Project = {
     id,
-    name: name || path.parse(sourcePath).name,
+    name: displayName,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
     source,
@@ -72,6 +100,25 @@ export async function createProject(name: string, sourcePath: string): Promise<P
     shorts: []
   }
   live.set(id, project)
+  saveProject(project)
+  return project
+}
+
+/** Attach (or replace) the source video on a project, probing it and resetting
+ *  the pipeline so stages re-run against the new footage. */
+export async function setProjectSource(id: string, sourcePath: string): Promise<Project> {
+  if (!fs.existsSync(sourcePath)) {
+    throw new Error(`Source file not found: ${sourcePath}. Pick the file again.`)
+  }
+  const project = openProject(id)
+  project.source = await probe(sourcePath)
+  // A new source invalidates any prior edit/render work.
+  project.edl = emptyEdl()
+  project.stages = freshStages()
+  project.transcript = undefined
+  project.trimKeep = undefined
+  project.previewPath = undefined
+  project.finalPath = undefined
   saveProject(project)
   return project
 }

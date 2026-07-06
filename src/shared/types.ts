@@ -246,8 +246,9 @@ export interface Project {
   name: string
   createdAt: string
   updatedAt: string
-  /** Original file — NEVER modified. All work happens in workDir. */
-  source: SourceInfo
+  /** Original file — NEVER modified. All work happens in workDir. Undefined
+   *  until the user attaches a source video to a freshly-named project. */
+  source?: SourceInfo
   workDir: string
   /**
    * Keep-segments snapshot from the last cut application — defines the

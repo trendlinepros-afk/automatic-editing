@@ -4,6 +4,7 @@
 import { app, BrowserWindow, Menu, protocol, net, shell } from 'electron'
 import path from 'path'
 import url from 'url'
+import { IPC } from '@shared/ipc'
 import { registerIpc } from './ipc'
 import { initDb } from './db'
 import { getSettingsStore } from './settings'
@@ -82,12 +83,72 @@ function buildMenu(): void {
     {
       label: 'View',
       submenu: [{ role: 'reload' }, { role: 'toggleDevTools' }, { type: 'separator' }, { role: 'togglefullscreen' }]
+    },
+    {
+      label: 'Help',
+      submenu: [
+        {
+          label: 'Check for Updates…',
+          // The renderer runs the check and shows the up-to-date / install
+          // dialog (the menu can't host the install buttons itself).
+          click: () => {
+            for (const win of BrowserWindow.getAllWindows()) win.webContents.send(IPC.menuCheckUpdates)
+          }
+        },
+        { type: 'separator' },
+        { label: 'Help Documentation', click: () => openHelpWindow() }
+      ]
     }
-    // Updates live in Settings → Updates (with the install buttons); no menu
-    // entry, to avoid a dead-end that can't offer the install action.
   ])
   Menu.setApplicationMenu(menu)
 }
+
+let helpWindow: BrowserWindow | null = null
+
+/** Placeholder help/guide window. Content is a stub for now — the walkthrough
+ *  gets written later; this just makes the menu item work. Loaded as a data URL
+ *  so it needs no bundling or on-disk asset path. */
+function openHelpWindow(): void {
+  if (helpWindow && !helpWindow.isDestroyed()) {
+    helpWindow.focus()
+    return
+  }
+  helpWindow = new BrowserWindow({
+    width: 900,
+    height: 720,
+    title: 'Zirtola — Help & Guide',
+    backgroundColor: '#0b0d10',
+    autoHideMenuBar: true,
+    webPreferences: { contextIsolation: true, nodeIntegration: false }
+  })
+  helpWindow.setMenuBarVisibility(false)
+  helpWindow.on('closed', () => {
+    helpWindow = null
+  })
+  helpWindow.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(HELP_HTML))
+}
+
+const HELP_HTML = `<!doctype html><html><head><meta charset="utf-8">
+<title>Zirtola — Help & Guide</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body { margin:0; font-family: "Segoe UI", system-ui, sans-serif; background:#0b0d10; color:#ccd4de;
+         display:flex; align-items:center; justify-content:center; min-height:100vh; padding:40px; }
+  .card { max-width:640px; text-align:center; }
+  h1 { font-size:28px; color:#f2f5f8; margin:0 0 6px; }
+  .brand { color:#5eead4; }
+  p { color:#8b96a5; line-height:1.6; margin:0 0 14px; }
+  .soon { display:inline-block; margin-top:18px; padding:8px 14px; border:1px solid #262d36; border-radius:8px;
+          color:#8b96a5; font-size:13px; }
+</style></head>
+<body><div class="card">
+  <h1>Zir<span class="brand">tola</span> — Help &amp; Guide</h1>
+  <p>A full walkthrough of the editing pipeline — cutting dead space, reviewing AI cuts,
+     transitions, graphics, sound &amp; music, and export — will live here.</p>
+  <p>Documentation is being written. This page is a placeholder so the menu item works.</p>
+  <span class="soon">Guide coming soon</span>
+</div></body></html>`
 
 // Single-instance lock: a second launch would write the same SQLite DB and
 // project files concurrently and corrupt them. Focus the existing window.

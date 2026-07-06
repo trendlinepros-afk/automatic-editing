@@ -1,26 +1,27 @@
 import { useState } from 'react'
 import { useStore, formatTime } from '../state/store'
+import NewProjectModal from '../components/NewProjectModal'
 
 export default function LibraryView() {
   const { projects, settings, refreshProjects, openProject, completeOnboarding } = useStore()
   const [busy, setBusy] = useState<null | 'create' | 'open' | 'folder'>(null)
   const [error, setError] = useState<string | null>(null)
+  const [naming, setNaming] = useState(false)
 
-  // Create a new project — makes a fresh folder inside <master>/Projects and
-  // opens the editor.
-  async function newProject() {
+  // Create a new project from a name — makes a fresh folder inside
+  // <master>/Projects and opens the editor, where footage is attached.
+  async function createNamed(name: string) {
     setError(null)
-    const sourcePath = await window.zirtola.pickSourceFile()
-    if (!sourcePath) return
     setBusy('create')
     try {
-      const project = await window.zirtola.createProject('', sourcePath)
+      const project = await window.zirtola.createProject(name)
       await refreshProjects()
       await openProject(project.id)
     } catch (err: any) {
       setError(err?.message ?? String(err))
     } finally {
       setBusy(null)
+      setNaming(false)
     }
   }
 
@@ -81,8 +82,8 @@ export default function LibraryView() {
           <button className="btn" onClick={openFromDisk} disabled={busy !== null}>
             {busy === 'open' ? 'Opening…' : 'Open Project…'}
           </button>
-          <button className="btn btn-primary" onClick={newProject} disabled={busy !== null}>
-            {busy === 'create' ? 'Reading source…' : '＋ Create New Project'}
+          <button className="btn btn-primary" onClick={() => setNaming(true)} disabled={busy !== null}>
+            {busy === 'create' ? 'Creating…' : '＋ Create New Project'}
           </button>
         </div>
       </div>
@@ -104,8 +105,16 @@ export default function LibraryView() {
               <button className="flex-1 text-left min-w-0" onClick={() => openProject(p.id)}>
                 <div className="font-medium text-ink-50 truncate">{p.name}</div>
                 <div className="text-xs text-ink-500 mt-1 truncate">
-                  {formatTime(p.durationSec)} · {new Date(p.updatedAt).toLocaleString()} ·{' '}
-                  <span className="font-mono">{p.sourcePath}</span>
+                  {p.sourcePath ? (
+                    <>
+                      {formatTime(p.durationSec)} · {new Date(p.updatedAt).toLocaleString()} ·{' '}
+                      <span className="font-mono">{p.sourcePath}</span>
+                    </>
+                  ) : (
+                    <>
+                      <span className="text-warn">No source video yet</span> · {new Date(p.updatedAt).toLocaleString()}
+                    </>
+                  )}
                 </div>
               </button>
               {p.approved && <span className="text-signal text-sm shrink-0">✓ approved</span>}
@@ -123,6 +132,10 @@ export default function LibraryView() {
             </div>
           ))}
         </div>
+      )}
+
+      {naming && (
+        <NewProjectModal busy={busy === 'create'} onCancel={() => setNaming(false)} onConfirm={createNamed} />
       )}
     </div>
   )

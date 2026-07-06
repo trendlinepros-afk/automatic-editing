@@ -1,14 +1,16 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useStore } from './state/store'
 import LibraryView from './views/LibraryView'
 import EditorView from './views/EditorView'
 import SettingsView from './views/SettingsView'
 import FirstRunView from './views/FirstRunView'
 import RenderQueuePanel from './components/RenderQueuePanel'
+import UpdateModal from './components/UpdateModal'
 
 export default function App() {
   const { view, setView, project, settings, closeProject, refreshProjects, refreshSettings, refreshJobs, upsertJob, applyProjectPush } =
     useStore()
+  const [showUpdate, setShowUpdate] = useState(false)
 
   useEffect(() => {
     refreshProjects()
@@ -16,9 +18,11 @@ export default function App() {
     refreshJobs()
     const offQueue = window.zirtola.onQueueEvent(upsertJob)
     const offProject = window.zirtola.onProjectEvent(applyProjectPush)
+    const offMenu = window.zirtola.onMenuCheckUpdates(() => setShowUpdate(true))
     return () => {
       offQueue()
       offProject()
+      offMenu()
     }
   }, [])
 
@@ -42,12 +46,24 @@ export default function App() {
     return () => window.removeEventListener('keydown', onKey)
   }, [])
 
+  // The update dialog (Help → Check for Updates) is available in every state.
+  const updateModal = showUpdate && <UpdateModal onClose={() => setShowUpdate(false)} />
+
   // Wait for settings before deciding; then gate on first-run onboarding.
   if (!settings)
     return (
-      <div className="h-screen bg-ink-950 flex items-center justify-center text-ink-500 text-sm">Loading Zirtola…</div>
+      <div className="h-screen bg-ink-950 flex items-center justify-center text-ink-500 text-sm">
+        Loading Zirtola…
+        {updateModal}
+      </div>
     )
-  if (!settings.onboarded) return <FirstRunView />
+  if (!settings.onboarded)
+    return (
+      <>
+        <FirstRunView />
+        {updateModal}
+      </>
+    )
 
   return (
     <div className="h-screen flex flex-col">
@@ -101,6 +117,7 @@ export default function App() {
         </div>
         <RenderQueuePanel />
       </main>
+      {updateModal}
     </div>
   )
 }

@@ -26,6 +26,7 @@ export const IPC = {
   projectSave: 'project:save',
   projectDelete: 'project:delete',
   projectImport: 'project:import',
+  projectSetSource: 'project:set-source',
   pickSourceFile: 'project:pick-source',
   pickProjectFile: 'project:pick-file',
 
@@ -65,8 +66,9 @@ export const IPC = {
   updateCheck: 'update:check',
   updateInstall: 'update:install',
 
-  // Project push events
-  projectEvent: 'project:event'
+  // Renderer-bound events
+  projectEvent: 'project:event',
+  menuCheckUpdates: 'menu:check-updates'
 } as const
 
 export interface ZirtolaApi {
@@ -74,7 +76,11 @@ export interface ZirtolaApi {
   pickSourceFile(): Promise<string | null>
   /** Pick a project.json from disk to open an existing project manually. */
   pickProjectFile(): Promise<string | null>
-  createProject(name: string, sourcePath: string): Promise<Project>
+  /** Create a project. A source video is optional — a named project gets its
+   *  folder immediately and footage is attached afterward. */
+  createProject(name: string, sourcePath?: string): Promise<Project>
+  /** Attach (or replace) the source video on a project. */
+  setProjectSource(id: string, sourcePath: string): Promise<Project>
   /** Open a project the user picked from disk (its project.json). */
   importProject(filePath: string): Promise<Project>
   openProject(id: string): Promise<Project>
@@ -126,4 +132,6 @@ export interface ZirtolaApi {
 
   // Push events
   onProjectEvent(cb: (project: Project) => void): () => void
+  /** Fired when the user picks Help → Check for Updates in the app menu. */
+  onMenuCheckUpdates(cb: () => void): () => void
 }
