@@ -1,5 +1,6 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useStore } from '../state/store'
+import { estimatePipelineCost, formatUsd } from '../state/cost'
 import { STAGE_ORDER, type StageId } from '@shared/types'
 
 const STAGE_META: Record<StageId, { n: number; label: string; desc: string }> = {
@@ -13,8 +14,15 @@ const STAGE_META: Record<StageId, { n: number; label: string; desc: string }> = 
 
 export default function StageRail() {
   const project = useStore((s) => s.project)
+  const settings = useStore((s) => s.settings)
   const [estimate, setEstimate] = useState<{ minutes: number; estUsd: number } | null>(null)
   const [confirming, setConfirming] = useState(false)
+
+  const cost = useMemo(
+    () => (project && settings ? estimatePipelineCost(project, settings) : null),
+    [project?.transcript, project?.source?.durationSec, settings?.routing, settings?.keysPresent]
+  )
+
   if (!project) return null
 
   const anyRunning = STAGE_ORDER.some((id) => project.stages[id].status === 'running')
@@ -84,11 +92,31 @@ export default function StageRail() {
                 </button>
               )}
             </div>
-            <p className="text-[11px] text-ink-500 mt-1 ml-7">{meta.desc}</p>
+            <div className="flex items-baseline justify-between ml-7 mt-1">
+              <p className="text-[11px] text-ink-500">{meta.desc}</p>
+              {cost && (
+                <span className="text-[10px] shrink-0 ml-2 font-mono text-ink-400" title="Estimated cost per run">
+                  {cost.perStage[id].local ? 'local' : `~${formatUsd(cost.perStage[id].usd)}`}
+                </span>
+              )}
+            </div>
             {st.error && <p className="text-[11px] text-cut mt-1 ml-7">{st.error}</p>}
           </div>
         )
       })}
+
+      {cost && (
+        <div className="mt-1 pt-2 border-t border-ink-700 flex items-baseline justify-between">
+          <span className="text-xs text-ink-300">Estimated total / run</span>
+          <span className="text-sm font-mono text-signal">~{formatUsd(cost.total)}</span>
+        </div>
+      )}
+      {cost && (
+        <p className="text-[10px] text-ink-600 leading-snug">
+          Estimate only. Transcription is metered by length (free once cached); AI cost depends on your provider and
+          transcript size. Local stages don't cost anything.
+        </p>
+      )}
     </aside>
   )
 }
