@@ -188,8 +188,11 @@ function PipelineTuning() {
     return Number.isFinite(n) ? n : fallback
   }
   return (
-    <Section title="Pipeline tuning">
-      <Row label="Silence threshold (dB)">
+    <Section
+      title="Pipeline tuning"
+      hint="With an OpenAI key, dead space is detected from the transcript — it keeps exactly where words are (plus the keep-pad buffer) and cuts the gaps, so you mostly only need Min silence duration + Keep-pad. The dB threshold is used only as a fallback when there's no transcript."
+    >
+      <Row label="Silence threshold (dB) — fallback only">
         <input
           className="input !w-28" type="number" defaultValue={settings.silence.thresholdDb}
           onBlur={(e) => saveSettings({ silence: { ...settings.silence, thresholdDb: num(e.target.value, -35) } })}

@@ -4,7 +4,7 @@
  */
 import { runFFmpeg } from './ffmpeg'
 import { newId } from '@shared/id'
-import type { CutRegion, TimeRegion } from '@shared/types'
+import type { CutRegion, TimeRegion, Transcript } from '@shared/types'
 
 export interface SilenceOptions {
   thresholdDb: number // e.g. -35
@@ -43,6 +43,39 @@ export async function detectSilence(
     regions.push({ start: pendingStart, end: durationSec })
   }
   return regions
+}
+
+/**
+ * Transcript-driven "silence" = the gaps BETWEEN spoken words. For talking-head
+ * footage this is far more accurate than an audio-energy threshold: it keeps
+ * exactly where words are and cuts the gaps, so there's no dB to tune. Returns
+ * gap regions at least `minSilenceSec` long; feed them to silencesToCuts (which
+ * applies the keep-pad buffer) exactly like audio silences.
+ */
+export function transcriptSilences(transcript: Transcript, durationSec: number, minSilenceSec: number): TimeRegion[] {
+  // Flatten to word intervals (fall back to the segment span when a segment has
+  // no per-word timings), sorted by start.
+  const words: TimeRegion[] = []
+  for (const seg of transcript.segments) {
+    if (seg.words && seg.words.length > 0) {
+      for (const w of seg.words) words.push({ start: w.start, end: w.end })
+    } else {
+      words.push({ start: seg.start, end: seg.end })
+    }
+  }
+  words.sort((a, b) => a.start - b.start)
+  if (words.length === 0) return []
+
+  const gaps: TimeRegion[] = []
+  if (words[0].start > 0) gaps.push({ start: 0, end: words[0].start }) // lead-in
+  let cursor = words[0].end
+  for (let i = 1; i < words.length; i++) {
+    if (words[i].start > cursor) gaps.push({ start: cursor, end: words[i].start })
+    cursor = Math.max(cursor, words[i].end)
+  }
+  if (durationSec > cursor) gaps.push({ start: cursor, end: durationSec }) // tail
+
+  return gaps.filter((g) => g.end - g.start >= minSilenceSec)
 }
 
 /**

@@ -27,7 +27,7 @@ import { cutsToKeepSegments, sourceToTrimmedTime, trimmedToSourceTime } from '@s
 import { saveProject, setProjectSource, orderedClipPaths } from '../project'
 import { buildSequence } from '../media/sequence'
 import { enqueueAndWait, type JobContext } from '../queue'
-import { detectSilence, silencesToCuts } from '../media/silence'
+import { detectSilence, silencesToCuts, transcriptSilences } from '../media/silence'
 import { detectSceneChanges } from '../media/scenes'
 import { applyCuts, applyTransitions, compositeGraphics, mixAudio, exportPreview, requireSource } from '../media/render'
 import { buildAssFile } from '../media/captions'
@@ -132,8 +132,14 @@ async function stageCutDetect(project: Project, ctx: JobContext): Promise<void> 
     save(project)
   }
 
-  ctx.progress(0.55, 'Detecting silence…')
-  const silences = await detectSilence(source.path, cfg, source.durationSec, ctx.signal)
+  // Prefer transcript-driven gaps (keep words + buffer, cut the rest) — far
+  // more accurate than an audio-dB threshold. Fall back to audio silencedetect
+  // only when there's no real transcript.
+  const hasWords = project.transcript && project.transcript.source !== 'mock'
+  ctx.progress(0.55, hasWords ? 'Finding gaps between words…' : 'Detecting silence…')
+  const silences = hasWords
+    ? transcriptSilences(project.transcript!, source.durationSec, cfg.minSilenceSec)
+    : await detectSilence(source.path, cfg, source.durationSec, ctx.signal)
 
   // Retake removal: use the transcript to find repeated takes / false starts
   // and cut all but the last. Best-effort — a failure here must not fail the
