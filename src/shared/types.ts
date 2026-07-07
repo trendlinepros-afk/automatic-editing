@@ -306,6 +306,7 @@ export interface ProjectSummary {
 export type AIProviderId = 'gemini' | 'openai' | 'deepseek' | 'anthropic' | 'mock'
 
 export type AITask =
+  | 'retake-detection'
   | 'cut-review'
   | 'graphic-planning'
   | 'graphic-slot-filling'

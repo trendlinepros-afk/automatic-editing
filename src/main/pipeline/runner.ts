@@ -20,7 +20,7 @@
  * upstream stage re-runs or when a manual EDL edit touches their inputs.
  */
 import { BrowserWindow } from 'electron'
-import { STAGE_ORDER, type EDL, type Project, type StageId, type TimeRegion } from '@shared/types'
+import { STAGE_ORDER, type CutRegion, type EDL, type Project, type StageId, type TimeRegion } from '@shared/types'
 import { IPC } from '@shared/ipc'
 import { newId } from '@shared/id'
 import { cutsToKeepSegments, sourceToTrimmedTime, trimmedToSourceTime } from '@shared/timemap'
@@ -32,7 +32,7 @@ import { detectSceneChanges } from '../media/scenes'
 import { applyCuts, applyTransitions, compositeGraphics, mixAudio, exportPreview, requireSource } from '../media/render'
 import { buildAssFile } from '../media/captions'
 import { transcribe, estimateCost } from '../transcription/whisper'
-import { reviewCuts, planGraphics } from '../ai/tasks'
+import { reviewCuts, planGraphics, detectRetakes } from '../ai/tasks'
 import { renderGraphic } from '../graphics/hyperframes'
 import { getSettingsStore } from '../settings'
 
@@ -134,13 +134,36 @@ async function stageCutDetect(project: Project, ctx: JobContext): Promise<void> 
 
   ctx.progress(0.55, 'Detecting silence…')
   const silences = await detectSilence(source.path, cfg, source.durationSec, ctx.signal)
+
+  // Retake removal: use the transcript to find repeated takes / false starts
+  // and cut all but the last. Best-effort — a failure here must not fail the
+  // whole stage, so silence cuts still land.
+  let retakeCuts: CutRegion[] = []
+  if (project.transcript && project.transcript.source !== 'mock') {
+    ctx.progress(0.75, 'Finding repeated takes…')
+    try {
+      const removals = await detectRetakes(project.transcript, ctx.signal)
+      retakeCuts = removals.map((r) => ({
+        id: newId('cut'),
+        start: r.start,
+        end: r.end,
+        padMs: 0,
+        origin: 'pipeline' as const,
+        status: 'proposed' as const,
+        note: 'Repeated take / false start'
+      }))
+    } catch (err) {
+      console.warn('[retake-detection] skipped:', err)
+    }
+  }
+
   // Keep the user's manual cuts AND revision-driven cuts; replace only prior
-  // pipeline-proposed silence cuts (so a stage-1 re-run can't wipe an
-  // 'add-cut' revision the user just made).
+  // pipeline-proposed cuts (silence + retakes) so a stage-1 re-run can't wipe
+  // an 'add-cut' revision the user just made.
   const kept = project.edl.cuts.filter((c) => c.origin === 'manual' || c.origin === 'ai-revision')
-  project.edl.cuts = [...kept, ...silencesToCuts(silences, cfg)]
+  project.edl.cuts = [...kept, ...silencesToCuts(silences, cfg), ...retakeCuts]
   project.edl.version++
-  ctx.progress(1, `${project.edl.cuts.length} cuts proposed`)
+  ctx.progress(1, `${project.edl.cuts.length} cuts proposed${retakeCuts.length ? ` (${retakeCuts.length} retakes)` : ''}`)
 }
 
 async function stageCutReview(project: Project, ctx: JobContext): Promise<void> {

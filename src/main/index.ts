@@ -1,9 +1,10 @@
 /**
  * Zirtola — Electron main process entry.
  */
-import { app, BrowserWindow, protocol, net, shell } from 'electron'
+import { app, BrowserWindow, protocol, shell } from 'electron'
 import path from 'path'
-import url from 'url'
+import fs from 'fs'
+import { Readable } from 'stream'
 import { registerIpc } from './ipc'
 import { initDb } from './db'
 import { getSettingsStore } from './settings'
@@ -34,6 +35,26 @@ function mediaRoots(): string[] {
   // their preview from their own work dir.
   for (const wd of openProjectWorkDirs()) roots.push(path.resolve(wd))
   return roots
+}
+
+function mimeForFile(p: string): string {
+  switch (path.extname(p).toLowerCase()) {
+    case '.mp4':
+    case '.m4v':
+      return 'video/mp4'
+    case '.webm':
+      return 'video/webm'
+    case '.mov':
+      return 'video/quicktime'
+    case '.mkv':
+      return 'video/x-matroska'
+    case '.mp3':
+      return 'audio/mpeg'
+    case '.wav':
+      return 'audio/wav'
+    default:
+      return 'application/octet-stream'
+  }
 }
 
 function createWindow(): BrowserWindow {
@@ -83,13 +104,45 @@ if (!gotLock) {
   app.whenReady().then(() => {
     // wcmedia://<absolute-path> → stream a local file to the <video> element,
     // confined to the app's own media roots (never arbitrary disk paths).
-    protocol.handle('wcmedia', (request) => {
+    // Honors HTTP Range so <video> can seek and won't stall after the first
+    // buffer (the reason plain net.fetch playback stops after a few seconds).
+    protocol.handle('wcmedia', async (request) => {
       try {
         const decoded = decodeURIComponent(request.url.slice('wcmedia://'.length))
         const resolved = path.resolve(decoded)
         const allowed = mediaRoots().some((r) => resolved === r || resolved.startsWith(r + path.sep))
         if (!allowed) return new Response('Forbidden', { status: 403 })
-        return net.fetch(url.pathToFileURL(resolved).toString())
+
+        const total = (await fs.promises.stat(resolved)).size
+        const type = mimeForFile(resolved)
+        const rangeHeader = request.headers.get('Range')
+
+        if (rangeHeader) {
+          const m = /bytes=(\d*)-(\d*)/.exec(rangeHeader)
+          let start = m && m[1] ? parseInt(m[1], 10) : 0
+          let end = m && m[2] ? parseInt(m[2], 10) : total - 1
+          if (!Number.isFinite(start) || start < 0) start = 0
+          if (!Number.isFinite(end) || end >= total) end = total - 1
+          if (start > end || start >= total) {
+            return new Response(null, { status: 416, headers: { 'Content-Range': `bytes */${total}` } })
+          }
+          const body = Readable.toWeb(fs.createReadStream(resolved, { start, end })) as ReadableStream
+          return new Response(body, {
+            status: 206,
+            headers: {
+              'Content-Type': type,
+              'Content-Length': String(end - start + 1),
+              'Content-Range': `bytes ${start}-${end}/${total}`,
+              'Accept-Ranges': 'bytes'
+            }
+          })
+        }
+
+        const body = Readable.toWeb(fs.createReadStream(resolved)) as ReadableStream
+        return new Response(body, {
+          status: 200,
+          headers: { 'Content-Type': type, 'Content-Length': String(total), 'Accept-Ranges': 'bytes' }
+        })
       } catch {
         return new Response('Bad request', { status: 400 })
       }

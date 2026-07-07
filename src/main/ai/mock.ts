@@ -11,6 +11,10 @@ export class MockProvider implements AIProvider {
 
   async complete(req: AIRequest): Promise<string> {
     await new Promise((r) => setTimeout(r, 300)) // feel like a network call
+    if (req.system.includes('TASK:retake-detection')) {
+      // No retakes flagged without a real model.
+      return JSON.stringify({ removals: [] })
+    }
     if (req.system.includes('TASK:cut-review')) {
       // Approve everything, flag nothing.
       return JSON.stringify({ decisions: [], notes: 'Mock review: all proposed cuts accepted.' })

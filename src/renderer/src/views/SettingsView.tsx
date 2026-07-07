@@ -3,6 +3,7 @@ import { useStore } from '../state/store'
 import type { AITask, AIProviderId, UpdateCheckResult } from '@shared/types'
 
 const TASKS: { id: AITask; label: string }[] = [
+  { id: 'retake-detection', label: 'Retake removal (stage 1)' },
   { id: 'cut-review', label: 'Cut review (stage 2)' },
   { id: 'graphic-planning', label: 'Graphic planning (stage 4)' },
   { id: 'graphic-slot-filling', label: 'Graphic slot filling (stage 4)' },

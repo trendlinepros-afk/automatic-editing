@@ -276,6 +276,9 @@ export async function exportPreview(
         ? ['-c:v', 'h264_nvenc', '-preset', 'p1', '-cq', '32']
         : ['-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '30']),
       '-c:a', 'aac', '-b:a', '128k',
+      // Move the moov atom to the front so the <video> element can start
+      // playing / seeking immediately over the wcmedia stream.
+      '-movflags', '+faststart',
       outPath
     ],
     opts

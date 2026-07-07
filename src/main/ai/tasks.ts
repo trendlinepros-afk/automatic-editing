@@ -18,6 +18,46 @@ import type {
 import { TEMPLATE_LIBRARY } from '../graphics/templates'
 
 // ---------------------------------------------------------------------------
+// Stage 1 — retake detection (remove repeated takes / false starts)
+// ---------------------------------------------------------------------------
+
+/** Time regions (SOURCE seconds) to REMOVE because they are earlier takes of a
+ *  line the speaker re-recorded, or false starts. */
+export async function detectRetakes(transcript: Transcript, signal?: AbortSignal): Promise<TimeRegion[]> {
+  // Numbered, timed lines give the model precise anchors to cut on.
+  const lines = transcript.segments
+    .map((s) => `[${s.start.toFixed(2)}-${s.end.toFixed(2)}] ${s.text}`)
+    .join('\n')
+
+  const raw = await runTask(
+    'retake-detection',
+    {
+      system:
+        'TASK:retake-detection — You clean up raw talking-head footage. Speakers often re-record the same ' +
+        'sentence several times until they get it right, and make false starts ("I— okay so", "let me try that again"). ' +
+        'From the timed transcript, find every EARLIER attempt of a line that is later repeated, and false starts, and ' +
+        'return the time regions to REMOVE — keeping only the LAST, cleanest take of each repeated line. ' +
+        'Be conservative: only remove clear repeats/restarts of the SAME content, never distinct sentences. ' +
+        'Respond with STRICT JSON: {"removals":[{"start":number,"end":number,"reason":string}]}. ' +
+        'start/end are seconds on the transcript clock. Return an empty array if there are no retakes.',
+      user: `TIMED TRANSCRIPT:\n${lines}`,
+      jsonSchemaHint: 'removals array',
+      temperature: 0.1,
+      maxTokens: 16384
+    },
+    signal
+  )
+
+  const parsed = extractJson(
+    raw,
+    (v): v is { removals: { start: number; end: number }[] } => isObject(v) && Array.isArray((v as any).removals)
+  )
+  return parsed.removals
+    .filter((r) => typeof r.start === 'number' && typeof r.end === 'number' && r.end > r.start)
+    .map((r) => ({ start: Math.max(0, r.start), end: r.end }))
+}
+
+// ---------------------------------------------------------------------------
 // Stage 2 — cut review
 // ---------------------------------------------------------------------------
 

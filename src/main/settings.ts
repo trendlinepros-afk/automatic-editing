@@ -30,6 +30,7 @@ const DEFAULTS: AppSettings = {
   keysPresent: { gemini: false, openai: false, deepseek: false, anthropic: false, opusclip: false },
   routing: {
     taskProviders: {
+      'retake-detection': 'gemini',
       'cut-review': 'gemini',
       'graphic-planning': 'gemini',
       'graphic-slot-filling': 'gemini',
