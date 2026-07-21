@@ -13,6 +13,7 @@ import fs from 'fs'
 import path from 'path'
 import { runFFmpeg } from '../media/ffmpeg'
 import { TEMPLATE_LIBRARY } from './templates'
+import { renderGraphicNative } from './native'
 import type { BrandKit, GraphicEvent } from '@shared/types'
 
 /**
@@ -114,9 +115,20 @@ export async function renderGraphic(
     return { renderPath: outPath, placeholder: false }
   }
 
-  // Placeholder path: HyperFrames not installed. Generate a labeled
-  // semi-transparent slate so compositing and review still work end-to-end.
-  const label = `${template.id} (placeholder - install HyperFrames)`
+  // HyperFrames not installed → render the template natively with ffmpeg
+  // (drawtext/drawbox): a real branded graphic, not a placeholder.
+  try {
+    const native = await renderGraphicNative(workDir, graphic, brand, signal)
+    if (native) {
+      onProgress?.(1)
+      return { renderPath: native, placeholder: false }
+    }
+  } catch (err) {
+    console.warn('[graphics] native render failed, using slate:', err)
+  }
+
+  // Last-ditch slate (no usable font / drawtext unavailable).
+  const label = `${template.id} (graphic could not be rendered)`
   await runFFmpeg(
     [
       '-f', 'lavfi',

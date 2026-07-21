@@ -27,12 +27,13 @@ import { cutsToKeepSegments, sourceToTrimmedTime, trimmedToSourceTime } from '@s
 import { saveProject, setProjectSource, orderedClipPaths } from '../project'
 import { buildSequence } from '../media/sequence'
 import { enqueueAndWait, type JobContext } from '../queue'
-import { detectSilence, silencesToCuts, transcriptSilences } from '../media/silence'
+import { detectSilence, silencesToCuts, transcriptGapCuts, refineCuts } from '../media/silence'
 import { detectSceneChanges } from '../media/scenes'
 import { applyCuts, applyTransitions, compositeGraphics, mixAudio, exportPreview, requireSource } from '../media/render'
 import { buildAssFile } from '../media/captions'
 import { transcribe, estimateCost } from '../transcription/whisper'
-import { reviewCuts, planGraphics, detectRetakes } from '../ai/tasks'
+import { reviewCuts, planGraphics } from '../ai/tasks'
+import { findRetakesDeterministic, findRetakesAI, mergeRemovals } from '../ai/retakes'
 import { renderGraphic } from '../graphics/hyperframes'
 import { getSettingsStore } from '../settings'
 
@@ -132,44 +133,51 @@ async function stageCutDetect(project: Project, ctx: JobContext): Promise<void> 
     save(project)
   }
 
-  // Prefer transcript-driven gaps (keep words + buffer, cut the rest) — far
-  // more accurate than an audio-dB threshold. Fall back to audio silencedetect
-  // only when there's no real transcript.
+  // Prefer transcript-driven, pause-shaped gap cuts (keep words + a natural
+  // beat, longer at sentence ends) — far more accurate than an audio-dB
+  // threshold. Fall back to audio silencedetect only without a real transcript.
   const hasWords = project.transcript && project.transcript.source !== 'mock'
   ctx.progress(0.55, hasWords ? 'Finding gaps between words…' : 'Detecting silence…')
-  const silences = hasWords
-    ? transcriptSilences(project.transcript!, source.durationSec, cfg.minSilenceSec)
-    : await detectSilence(source.path, cfg, source.durationSec, ctx.signal)
+  const gapCuts: CutRegion[] = hasWords
+    ? transcriptGapCuts(project.transcript!, source.durationSec, cfg)
+    : silencesToCuts(await detectSilence(source.path, cfg, source.durationSec, ctx.signal), cfg)
 
-  // Retake removal: use the transcript to find repeated takes / false starts
-  // and cut all but the last. Best-effort — a failure here must not fail the
-  // whole stage, so silence cuts still land.
+  // Retake removal — two layers: a deterministic near-duplicate pass (always
+  // catches "say it until it's right" repeats, keeps the LAST take) plus an AI
+  // pass for paraphrased retakes, validated against the transcript before it
+  // may cut anything. Best-effort: a model failure never fails the stage.
   let retakeCuts: CutRegion[] = []
-  if (project.transcript && project.transcript.source !== 'mock') {
-    ctx.progress(0.75, 'Finding repeated takes…')
+  if (hasWords) {
+    ctx.progress(0.7, 'Finding repeated takes…')
+    const deterministic = findRetakesDeterministic(project.transcript!)
+    let fromAI: typeof deterministic = []
     try {
-      const removals = await detectRetakes(project.transcript, ctx.signal)
-      retakeCuts = removals.map((r) => ({
-        id: newId('cut'),
-        start: r.start,
-        end: r.end,
-        padMs: 0,
-        origin: 'pipeline' as const,
-        status: 'proposed' as const,
-        note: 'Repeated take / false start'
-      }))
+      fromAI = await findRetakesAI(project.transcript!, ctx.signal)
     } catch (err) {
-      console.warn('[retake-detection] skipped:', err)
+      console.warn('[retake-detection] AI pass skipped:', err)
     }
+    retakeCuts = mergeRemovals(deterministic, fromAI).map((r) => ({
+      id: newId('cut'),
+      start: r.start,
+      end: r.end,
+      padMs: 0,
+      origin: 'pipeline' as const,
+      status: 'proposed' as const,
+      note: r.reason
+    }))
   }
+
+  // Merge overlaps and swallow sub-0.3s keep slivers between adjacent cuts —
+  // half-word fragments between a retake cut and a gap cut play as stutter.
+  const proposed = refineCuts([...gapCuts, ...retakeCuts])
 
   // Keep the user's manual cuts AND revision-driven cuts; replace only prior
   // pipeline-proposed cuts (silence + retakes) so a stage-1 re-run can't wipe
   // an 'add-cut' revision the user just made.
   const kept = project.edl.cuts.filter((c) => c.origin === 'manual' || c.origin === 'ai-revision')
-  project.edl.cuts = [...kept, ...silencesToCuts(silences, cfg), ...retakeCuts]
+  project.edl.cuts = [...kept, ...proposed]
   project.edl.version++
-  ctx.progress(1, `${project.edl.cuts.length} cuts proposed${retakeCuts.length ? ` (${retakeCuts.length} retakes)` : ''}`)
+  ctx.progress(1, `${project.edl.cuts.length} cuts proposed${retakeCuts.length ? ` (${retakeCuts.length} retake cuts)` : ''}`)
 }
 
 async function stageCutReview(project: Project, ctx: JobContext): Promise<void> {
@@ -210,12 +218,48 @@ async function stageTransitions(project: Project, ctx: JobContext): Promise<void
   ctx.progress(0.1, 'Detecting scene changes…')
   // Scene detection runs on the trimmed video → boundaries arrive in trimmed
   // time; store them anchored in SOURCE time like everything else.
-  const boundaries = await detectSceneChanges(trimmed, cfg.threshold, ctx.signal)
+  const detected = await detectSceneChanges(trimmed, cfg.threshold, ctx.signal)
+
+  // CRITICAL FILTER: after dead-space removal, every cut join is a jump cut,
+  // and the scene detector fires on almost all of them — which used to bake a
+  // dip-to-black every few seconds ("flashing"). A real scene change inside
+  // continuous footage does NOT coincide with a join, so drop any detected
+  // boundary within 0.5s of one. Clip handoffs in a multi-clip sequence ARE
+  // real scene changes — they're added back explicitly below.
+  const joinsTrimmed: number[] = []
+  {
+    let acc = 0
+    for (let i = 0; i < keep.length - 1; i++) {
+      acc += keep[i].end - keep[i].start
+      joinsTrimmed.push(acc)
+    }
+  }
+  const nearJoin = (t: number) => joinsTrimmed.some((j) => Math.abs(j - t) < 0.5)
+  const realChanges = detected.filter((t) => !nearJoin(t))
+
+  const clipChangesTrimmed = (project.clipBoundaries ?? [])
+    .map((b) => sourceToTrimmedTime(b, keep))
+    .filter((t) => t > 1)
+
+  // Density cap: transitions are seasoning, not the meal. Enforce ≥10s spacing
+  // (clip boundaries win over detected changes), skip the first/last 2 seconds.
+  const trimmedLen = keep.reduce((a, k) => a + (k.end - k.start), 0)
+  const candidates = [
+    ...clipChangesTrimmed.map((at) => ({ at, priority: 0 })),
+    ...realChanges.map((at) => ({ at, priority: 1 }))
+  ]
+    .filter((c) => c.at > 2 && c.at < trimmedLen - 2)
+    .sort((a, b) => a.priority - b.priority || a.at - b.at)
+  const placed: number[] = []
+  for (const c of candidates) {
+    if (placed.every((p) => Math.abs(p - c.at) >= 10)) placed.push(c.at)
+  }
+  placed.sort((a, b) => a - b)
 
   const manual = project.edl.transitions.filter((t) => t.origin !== 'pipeline')
   project.edl.transitions = [
     ...manual,
-    ...boundaries.map((at) => ({
+    ...placed.map((at) => ({
       id: newId('trn'),
       at: trimmedToSourceTime(at, keep),
       kind: cfg.defaultTransition,
@@ -425,21 +469,28 @@ export async function startAutoEdit(project: Project): Promise<void> {
   }
 
   let seqPath = ''
+  let boundaries: number[] = []
   await enqueueAndWait(
     'stage-run',
     clips.length > 1 ? `Building sequence from ${clips.length} clips` : 'Preparing clip',
     project.id,
     async (ctx) => {
-      seqPath = await buildSequence(project.workDir, clips, {
+      const result = await buildSequence(project.workDir, clips, {
         signal: ctx.signal,
         onProgress: (f) => ctx.progress(f, 'Building sequence…')
       })
+      seqPath = result.outPath
+      boundaries = result.boundaries
     }
   )
 
   // force: the multi-clip sequence lives at a fixed path, so a re-run rebuilds
   // the same filename with new content — bypass the same-path no-op guard.
   const updated = await setProjectSource(project.id, seqPath, { force: true })
+  // Clip handoffs are REAL scene changes — stage 3 places transitions there
+  // and uses them to separate true changes from dead-space jump cuts.
+  updated.clipBoundaries = boundaries
+  saveProject(updated)
   pushProject(updated)
   await runFullPipeline(updated)
 }

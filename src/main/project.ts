@@ -180,6 +180,7 @@ export async function setProjectSource(id: string, sourcePath: string, opts?: { 
   project.stages = freshStages()
   project.transcript = undefined
   project.trimKeep = undefined
+  project.clipBoundaries = undefined
   project.previewPath = undefined
   project.finalPath = undefined
   saveProject(project)

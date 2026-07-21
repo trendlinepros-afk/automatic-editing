@@ -271,6 +271,11 @@ export interface Project {
   /** Imported media (videos + folders), referenced in place. The user picks one
    *  video from here as the active `source`. */
   media?: MediaItem[]
+  /** For multi-clip sequences: SOURCE-time positions where one clip ends and
+   *  the next begins. These are REAL scene changes — stage 3 places a
+   *  transition at each, and uses them to tell true scene changes apart from
+   *  jump cuts introduced by dead-space removal. */
+  clipBoundaries?: number[]
   workDir: string
   /**
    * Keep-segments snapshot from the last cut application — defines the

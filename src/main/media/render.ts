@@ -34,14 +34,45 @@ export async function applyCuts(
   const outPath = path.join(project.workDir, 'trimmed.mp4')
   if (keep.length === 0) throw new Error('Cut list removes the entire video — nothing left to keep.')
 
-  // Build a select/aselect filter over keep segments; re-encodes once, keeps
-  // A/V in sync, avoids N intermediate files. Sources with no audio stream
-  // must NOT get an -af/-c:a (ffmpeg errors on a missing audio input).
-  const expr = keep.map((k) => `between(t,${k.start.toFixed(3)},${k.end.toFixed(3)})`).join('+')
+  // Segment-wise trim + concat, with a ~12ms audio fade at each join so cuts
+  // never click or pop (hard sample-cuts at arbitrary offsets are audible).
+  // The graph is written to a filter_complex_script file: with hundreds of
+  // keep segments an inline -filter_complex would blow the Windows
+  // command-line length limit.
+  const n = keep.length
+  const FADE = 0.012
+  const lines: string[] = []
+  const vs = Array.from({ length: n }, (_, i) => `[vs${i}]`)
+  lines.push(`[0:v]split=${n}${vs.join('')}`)
+  if (source.hasAudio) {
+    const as = Array.from({ length: n }, (_, i) => `[as${i}]`)
+    lines.push(`[0:a]asplit=${n}${as.join('')}`)
+  }
+  keep.forEach((k, i) => {
+    const dur = k.end - k.start
+    lines.push(`[vs${i}]trim=start=${k.start.toFixed(3)}:end=${k.end.toFixed(3)},setpts=PTS-STARTPTS[v${i}]`)
+    if (source.hasAudio) {
+      const fadeOutSt = Math.max(0, dur - FADE)
+      lines.push(
+        `[as${i}]atrim=start=${k.start.toFixed(3)}:end=${k.end.toFixed(3)},asetpts=PTS-STARTPTS,` +
+          `afade=t=in:d=${FADE},afade=t=out:st=${fadeOutSt.toFixed(3)}:d=${FADE}[a${i}]`
+      )
+    }
+  })
+  const pairs = keep.map((_, i) => (source.hasAudio ? `[v${i}][a${i}]` : `[v${i}]`)).join('')
+  lines.push(
+    source.hasAudio
+      ? `${pairs}concat=n=${n}:v=1:a=1[vout][aout]`
+      : `${pairs}concat=n=${n}:v=1:a=0[vout]`
+  )
+  const scriptPath = path.join(project.workDir, 'cuts-filter.txt')
+  fs.writeFileSync(scriptPath, lines.join(';\n'))
+
   const args = [
     '-i', source.path,
-    '-vf', `select='${expr}',setpts=N/FRAME_RATE/TB`,
-    ...(source.hasAudio ? ['-af', `aselect='${expr}',asetpts=N/SR/TB`] : []),
+    '-filter_complex_script', scriptPath,
+    '-map', '[vout]',
+    ...(source.hasAudio ? ['-map', '[aout]'] : []),
     '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '16',
     ...(source.hasAudio ? ['-c:a', 'aac', '-b:a', '192k'] : ['-an']),
     outPath
@@ -137,12 +168,15 @@ export async function compositeGraphics(
   // Each overlay input must be time-shifted to its placement (setpts) or its
   // frames play at t=0..dur and the enable window would only ever show the
   // frozen last frame. eof_action=pass drops the overlay once the clip ends.
+  // Overlays are authored at 1920×1080 — scale to the base video so they fill
+  // correctly on 4K or 720p sources too.
+  const { width: bw, height: bh } = requireSource(project)
   const parts: string[] = []
   let prev = '[0:v]'
   rendered.forEach((g, i) => {
     const idx = i + 1
     const label = i === rendered.length - 1 ? '[vout]' : `[v${idx}]`
-    parts.push(`[${idx}:v]setpts=PTS-STARTPTS+${g.at.toFixed(3)}/TB[g${idx}]`)
+    parts.push(`[${idx}:v]scale=${bw}:${bh},setpts=PTS-STARTPTS+${g.at.toFixed(3)}/TB[g${idx}]`)
     parts.push(
       `${prev}[g${idx}]overlay=0:0:eof_action=pass:enable='between(t,${g.at.toFixed(3)},${(g.at + g.durationSec).toFixed(3)})'${label}`
     )

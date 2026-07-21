@@ -46,36 +46,95 @@ export async function detectSilence(
 }
 
 /**
- * Transcript-driven "silence" = the gaps BETWEEN spoken words. For talking-head
- * footage this is far more accurate than an audio-energy threshold: it keeps
- * exactly where words are and cuts the gaps, so there's no dB to tune. Returns
- * gap regions at least `minSilenceSec` long; feed them to silencesToCuts (which
- * applies the keep-pad buffer) exactly like audio silences.
+ * Transcript-driven dead-space cuts — derived from the gaps BETWEEN spoken
+ * words, with NATURAL PAUSE SHAPING instead of a uniform machine-gun trim:
+ *
+ *  - Mid-sentence gaps keep a short beat (keep-pad each side).
+ *  - Sentence-ending gaps (previous word ends with . ! ?) keep a longer breath
+ *    (~1.8× pad) so pacing feels human, not chopped.
+ *  - The lead-in keeps ~0.5s before the first word; the tail keeps ~1s after
+ *    the last word.
+ *  - A gap is only cut when cutting actually saves ≥0.2s — no pointless
+ *    micro-cuts that add join artifacts without shortening the video.
+ *
+ * Far more accurate than an audio-dB threshold, and nothing to tune.
  */
-export function transcriptSilences(transcript: Transcript, durationSec: number, minSilenceSec: number): TimeRegion[] {
-  // Flatten to word intervals (fall back to the segment span when a segment has
-  // no per-word timings), sorted by start.
-  const words: TimeRegion[] = []
+export function transcriptGapCuts(
+  transcript: Transcript,
+  durationSec: number,
+  opts: SilenceOptions
+): CutRegion[] {
+  interface Word extends TimeRegion {
+    text: string
+  }
+  const words: Word[] = []
   for (const seg of transcript.segments) {
     if (seg.words && seg.words.length > 0) {
-      for (const w of seg.words) words.push({ start: w.start, end: w.end })
+      for (const w of seg.words) words.push({ start: w.start, end: w.end, text: w.word })
     } else {
-      words.push({ start: seg.start, end: seg.end })
+      words.push({ start: seg.start, end: seg.end, text: seg.text })
     }
   }
   words.sort((a, b) => a.start - b.start)
   if (words.length === 0) return []
 
-  const gaps: TimeRegion[] = []
-  if (words[0].start > 0) gaps.push({ start: 0, end: words[0].start }) // lead-in
-  let cursor = words[0].end
-  for (let i = 1; i < words.length; i++) {
-    if (words[i].start > cursor) gaps.push({ start: cursor, end: words[i].start })
-    cursor = Math.max(cursor, words[i].end)
+  const pad = Math.max(0.06, opts.keepPadMs / 1000)
+  const minGap = Math.max(0.2, opts.minSilenceSec)
+  const cuts: CutRegion[] = []
+  const push = (start: number, end: number, note?: string) => {
+    if (end - start >= 0.12) {
+      cuts.push({ id: newId('cut'), start, end, padMs: opts.keepPadMs, origin: 'pipeline', status: 'proposed', note })
+    }
   }
-  if (durationSec > cursor) gaps.push({ start: cursor, end: durationSec }) // tail
 
-  return gaps.filter((g) => g.end - g.start >= minSilenceSec)
+  // Lead-in: keep half a second of run-up before the first word.
+  if (words[0].start > 1.0) push(0, words[0].start - 0.5, 'Lead-in before speech')
+
+  let cursor = words[0].end
+  let prevText = words[0].text
+  for (let i = 1; i < words.length; i++) {
+    const gapStart = cursor
+    const gapEnd = words[i].start
+    if (gapEnd - gapStart >= minGap) {
+      // Sentence boundary → leave a longer breath; mid-sentence → tight beat.
+      const sentenceEnd = /[.!?]["')\]]?\s*$/.test(prevText.trim())
+      const tailPad = sentenceEnd ? pad * 1.8 : pad
+      const leadPad = pad * 0.8 // Whisper word STARTS are accurate; tuck in close
+      const cutStart = gapStart + tailPad
+      const cutEnd = gapEnd - leadPad
+      if (cutEnd - cutStart >= 0.2) push(cutStart, cutEnd)
+    }
+    cursor = Math.max(cursor, words[i].end)
+    prevText = words[i].text
+  }
+
+  // Tail: keep a one-second outro beat after the last word.
+  if (durationSec - cursor > 1.5) push(cursor + 1.0, durationSec, 'Tail after speech')
+  return cuts
+}
+
+/**
+ * Post-process a proposed cut list so the resulting keeps play smoothly:
+ *  - overlapping cuts merge;
+ *  - cuts separated by a keep sliver shorter than `minKeepSec` merge THROUGH
+ *    the sliver (a 0.2s fragment of a half-word is jarring — cutting it reads
+ *    better than keeping it);
+ *  - cuts below 0.12s are dropped (join artifact costs more than it saves).
+ * Only pass PIPELINE-proposed cuts through this — never rewrite manual edits.
+ */
+export function refineCuts(cuts: CutRegion[], minKeepSec = 0.3): CutRegion[] {
+  const sorted = cuts.slice().sort((a, b) => a.start - b.start)
+  const merged: CutRegion[] = []
+  for (const c of sorted) {
+    const last = merged[merged.length - 1]
+    if (last && c.start - last.end < minKeepSec) {
+      last.end = Math.max(last.end, c.end)
+      if (c.note && !last.note) last.note = c.note
+    } else {
+      merged.push({ ...c })
+    }
+  }
+  return merged.filter((c) => c.end - c.start >= 0.12)
 }
 
 /**

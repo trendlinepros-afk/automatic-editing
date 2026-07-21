@@ -10,16 +10,29 @@ import fs from 'fs'
 import path from 'path'
 import { runFFmpeg, probe, type RunOptions } from './ffmpeg'
 
-export async function buildSequence(workDir: string, clips: string[], opts: RunOptions = {}): Promise<string> {
+export interface SequenceResult {
+  outPath: string
+  /** Sequence-time positions of the joins between consecutive clips. */
+  boundaries: number[]
+}
+
+export async function buildSequence(workDir: string, clips: string[], opts: RunOptions = {}): Promise<SequenceResult> {
   if (clips.length === 0) throw new Error('No clips to sequence.')
   // One clip: edit it in place, no concat, no copy.
-  if (clips.length === 1) return clips[0]
+  if (clips.length === 1) return { outPath: clips[0], boundaries: [] }
 
   for (const c of clips) {
     if (!fs.existsSync(c)) throw new Error(`Clip not found: ${c}. Re-import it and try again.`)
   }
 
   const infos = await Promise.all(clips.map((p) => probe(p)))
+  // Cumulative durations mark where each clip hands off to the next.
+  const boundaries: number[] = []
+  let acc = 0
+  for (let i = 0; i < infos.length - 1; i++) {
+    acc += infos[i].durationSec
+    boundaries.push(acc)
+  }
   const first = infos[0]
   const uniform = infos.every(
     (i) =>
@@ -37,7 +50,7 @@ export async function buildSequence(workDir: string, clips: string[], opts: RunO
     const esc = (p: string) => p.replace(/'/g, "'\\''")
     fs.writeFileSync(listFile, clips.map((p) => `file '${esc(path.resolve(p))}'`).join('\n'))
     await runFFmpeg(['-f', 'concat', '-safe', '0', '-i', listFile, '-c', 'copy', out], { ...opts, totalSec })
-    return out
+    return { outPath: out, boundaries }
   }
 
   // Mixed formats: normalize every clip to the first clip's frame + a common
@@ -71,5 +84,5 @@ export async function buildSequence(workDir: string, clips: string[], opts: RunO
     ],
     { ...opts, totalSec }
   )
-  return out
+  return { outPath: out, boundaries }
 }
