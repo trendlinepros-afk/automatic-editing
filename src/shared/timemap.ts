@@ -24,7 +24,9 @@ export function cutsToKeepSegments(cuts: CutRegion[], durationSec: number): Time
     cursor = Math.max(cursor, c.end)
   }
   if (cursor < durationSec) keep.push({ start: cursor, end: durationSec })
-  return keep.filter((k) => k.end - k.start > 0.04)
+  // Floor at ~2 frames of 24fps footage: a keep shorter than this can contain
+  // ZERO frames at low fps, and an empty segment breaks the concat render.
+  return keep.filter((k) => k.end - k.start > 0.09)
 }
 
 /** Map a SOURCE-timeline second onto the TRIMMED timeline. Times inside a cut

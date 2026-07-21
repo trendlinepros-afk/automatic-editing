@@ -103,9 +103,12 @@ export async function findRetakesAI(transcript: Transcript, signal?: AbortSignal
 
     // VALIDATE: the removed text must actually resemble a later kept take, or
     // be a short false start. Otherwise the model is deleting unique content.
+    // Truncate ONCE and reuse — comparing the raw value while indexing the
+    // truncated one would let betterTake=5.5 validate removal 5 against itself.
     const removedTokens = normalizeTokens(segs.slice(from, to + 1).map((s) => s.text).join(' '))
-    const better = typeof r.betterTake === 'number' ? segs[Math.trunc(r.betterTake)] : undefined
-    const betterTokens = better && r.betterTake! > to ? normalizeTokens(better.text) : null
+    const bt = typeof r.betterTake === 'number' ? Math.trunc(r.betterTake) : NaN
+    const better = Number.isInteger(bt) && bt > to && bt < segs.length ? segs[bt] : undefined
+    const betterTokens = better ? normalizeTokens(better.text) : null
     const resembles =
       betterTokens !== null &&
       (tokenSimilarity(removedTokens, betterTokens) >= 0.45 || prefixSimilarity(removedTokens, betterTokens) >= 0.6)

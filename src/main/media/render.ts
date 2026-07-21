@@ -168,17 +168,23 @@ export async function compositeGraphics(
   // Each overlay input must be time-shifted to its placement (setpts) or its
   // frames play at t=0..dur and the enable window would only ever show the
   // frozen last frame. eof_action=pass drops the overlay once the clip ends.
-  // Overlays are authored at 1920×1080 — scale to the base video so they fill
-  // correctly on 4K or 720p sources too.
+  // Overlays are authored at 1920×1080 — scale to FIT the base video while
+  // preserving aspect (never stretch: a vertical source would distort text
+  // ~3.5×), then anchor: lower-thirds to the bottom edge, cards centered.
+  // On a 16:9 base the scaled overlay fills the frame exactly (as before).
   const { width: bw, height: bh } = requireSource(project)
   const parts: string[] = []
   let prev = '[0:v]'
   rendered.forEach((g, i) => {
     const idx = i + 1
     const label = i === rendered.length - 1 ? '[vout]' : `[v${idx}]`
-    parts.push(`[${idx}:v]scale=${bw}:${bh},setpts=PTS-STARTPTS+${g.at.toFixed(3)}/TB[g${idx}]`)
     parts.push(
-      `${prev}[g${idx}]overlay=0:0:eof_action=pass:enable='between(t,${g.at.toFixed(3)},${(g.at + g.durationSec).toFixed(3)})'${label}`
+      `[${idx}:v]scale=${bw}:${bh}:force_original_aspect_ratio=decrease,` +
+        `setpts=PTS-STARTPTS+${g.at.toFixed(3)}/TB[g${idx}]`
+    )
+    const yExpr = g.templateId === 'lower-third' ? 'main_h-overlay_h' : '(main_h-overlay_h)/2'
+    parts.push(
+      `${prev}[g${idx}]overlay=(main_w-overlay_w)/2:${yExpr}:eof_action=pass:enable='between(t,${g.at.toFixed(3)},${(g.at + g.durationSec).toFixed(3)})'${label}`
     )
     prev = `[v${idx}]`
   })

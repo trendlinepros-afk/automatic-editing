@@ -66,13 +66,26 @@ export function transcriptGapCuts(
 ): CutRegion[] {
   interface Word extends TimeRegion {
     text: string
+    /** True when this word ends a sentence. Whisper word tokens carry NO
+     *  punctuation, so the last word of a segment inherits the segment text's
+     *  ending — segments break at sentence-ish boundaries. */
+    sentenceEnd: boolean
   }
   const words: Word[] = []
   for (const seg of transcript.segments) {
+    const segEndsSentence = /[.!?]["')\]]?\s*$/.test(seg.text.trim())
     if (seg.words && seg.words.length > 0) {
-      for (const w of seg.words) words.push({ start: w.start, end: w.end, text: w.word })
+      seg.words.forEach((w, i) => {
+        const last = i === seg.words.length - 1
+        words.push({
+          start: w.start,
+          end: w.end,
+          text: w.word,
+          sentenceEnd: /[.!?]["')\]]?\s*$/.test(w.word.trim()) || (last && segEndsSentence)
+        })
+      })
     } else {
-      words.push({ start: seg.start, end: seg.end, text: seg.text })
+      words.push({ start: seg.start, end: seg.end, text: seg.text, sentenceEnd: segEndsSentence })
     }
   }
   words.sort((a, b) => a.start - b.start)
@@ -91,21 +104,22 @@ export function transcriptGapCuts(
   if (words[0].start > 1.0) push(0, words[0].start - 0.5, 'Lead-in before speech')
 
   let cursor = words[0].end
-  let prevText = words[0].text
+  let prevSentenceEnd = words[0].sentenceEnd
   for (let i = 1; i < words.length; i++) {
     const gapStart = cursor
     const gapEnd = words[i].start
     if (gapEnd - gapStart >= minGap) {
       // Sentence boundary → leave a longer breath; mid-sentence → tight beat.
-      const sentenceEnd = /[.!?]["')\]]?\s*$/.test(prevText.trim())
-      const tailPad = sentenceEnd ? pad * 1.8 : pad
+      const tailPad = prevSentenceEnd ? pad * 1.8 : pad
       const leadPad = pad * 0.8 // Whisper word STARTS are accurate; tuck in close
       const cutStart = gapStart + tailPad
       const cutEnd = gapEnd - leadPad
       if (cutEnd - cutStart >= 0.2) push(cutStart, cutEnd)
     }
-    cursor = Math.max(cursor, words[i].end)
-    prevText = words[i].text
+    if (words[i].end >= cursor) {
+      cursor = words[i].end
+      prevSentenceEnd = words[i].sentenceEnd
+    }
   }
 
   // Tail: keep a one-second outro beat after the last word.
@@ -127,7 +141,14 @@ export function refineCuts(cuts: CutRegion[], minKeepSec = 0.3): CutRegion[] {
   const merged: CutRegion[] = []
   for (const c of sorted) {
     const last = merged[merged.length - 1]
-    if (last && c.start - last.end < minKeepSec) {
+    const sliver = last ? c.start - last.end : Infinity
+    // NEVER merge two retake cuts across a positive keep: the material between
+    // consecutive retake removals IS the kept take (possibly a very short
+    // line) — merging through it would delete the only surviving copy, and
+    // the merged 'retake' cut would bypass stage-2 review. Overlaps still
+    // merge; retake↔gap merges are safe (the sliver is inside a word gap).
+    const bothRetake = last?.kind === 'retake' && c.kind === 'retake'
+    if (last && (sliver <= 0 || (sliver < minKeepSec && !bothRetake))) {
       last.end = Math.max(last.end, c.end)
       if (c.note && !last.note) last.note = c.note
       // A merge that includes retake material contains intentional speech —
