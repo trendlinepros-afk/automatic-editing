@@ -115,6 +115,8 @@ function drawText(dir: string, id: string, n: number, s: TextSpec): string {
   const parts = [
     `fontfile='${fpath(s.font)}'`,
     `textfile='${fpath(file)}'`,
+    // No %{...} expansion — slot text is literal ("87%" must render as-is).
+    'expansion=none',
     `fontsize=${s.size}`,
     `fontcolor=${s.color}`,
     `x=${s.x}`,
@@ -127,7 +129,9 @@ function drawText(dir: string, id: string, n: number, s: TextSpec): string {
 }
 
 function drawBox(x: number, y: number, w: number, h: number, color: string, alpha: number, thickness: number | 'fill'): string {
-  return `drawbox=x=${x}:y=${y}:w=${w}:h=${h}:color=${color}@${alpha}:t=${thickness}`
+  // replace=1 writes color AND alpha — without it, boxes drawn on the fully
+  // transparent canvas blend into alpha=0 and are invisible when overlaid.
+  return `drawbox=x=${x}:y=${y}:w=${w}:h=${h}:color=${color}@${alpha}:t=${thickness}:replace=1`
 }
 
 // ---------------------------------------------------------------------------

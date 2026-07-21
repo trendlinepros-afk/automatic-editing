@@ -83,7 +83,7 @@ export function transcriptGapCuts(
   const cuts: CutRegion[] = []
   const push = (start: number, end: number, note?: string) => {
     if (end - start >= 0.12) {
-      cuts.push({ id: newId('cut'), start, end, padMs: opts.keepPadMs, origin: 'pipeline', status: 'proposed', note })
+      cuts.push({ id: newId('cut'), start, end, padMs: opts.keepPadMs, origin: 'pipeline', status: 'proposed', kind: 'gap', note })
     }
   }
 
@@ -130,6 +130,9 @@ export function refineCuts(cuts: CutRegion[], minKeepSec = 0.3): CutRegion[] {
     if (last && c.start - last.end < minKeepSec) {
       last.end = Math.max(last.end, c.end)
       if (c.note && !last.note) last.note = c.note
+      // A merge that includes retake material contains intentional speech —
+      // it must not be re-judged as a silence cut by the stage-2 reviewer.
+      if (c.kind === 'retake') last.kind = 'retake'
     } else {
       merged.push({ ...c })
     }

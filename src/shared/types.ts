@@ -90,6 +90,10 @@ export interface CutRegion extends TimeRegion {
   status: 'proposed' | 'validated' | 'rejected'
   /** Keep-pad already applied to start/end (ms of lead/tail retained). */
   padMs: number
+  /** What this cut removes. 'gap' = dead space between words; 'retake' = an
+   *  earlier take of a repeated line (INTENTIONALLY contains speech — the
+   *  stage-2 silence reviewer must not treat it as a bad silence cut). */
+  kind?: 'gap' | 'retake'
   /** Why the AI flagged/repaired this cut, if it did. */
   note?: string
 }

@@ -101,15 +101,26 @@ export function latestArtifact(project: Project, upTo: StageId): string | undefi
   return undefined
 }
 
-/** Speech regions on the trimmed timeline, for ducking. */
+/** Speech regions on the trimmed timeline, for ducking. Adjacent segments are
+ *  merged (gap < 1s): hundreds of per-segment terms would bloat the ducking
+ *  volume expression, and music pumping between every sentence sounds bad
+ *  anyway — duck through short pauses, come back up in real breaks. */
 function speechRegionsTrimmed(project: Project, keep: TimeRegion[]): TimeRegion[] {
   if (!project.transcript) return []
-  return project.transcript.segments
+  const mapped = project.transcript.segments
     .map((s) => ({
       start: sourceToTrimmedTime(s.start, keep),
       end: sourceToTrimmedTime(s.end, keep)
     }))
     .filter((r) => r.end - r.start > 0.2)
+    .sort((a, b) => a.start - b.start)
+  const merged: TimeRegion[] = []
+  for (const r of mapped) {
+    const last = merged[merged.length - 1]
+    if (last && r.start - last.end < 1.0) last.end = Math.max(last.end, r.end)
+    else merged.push({ ...r })
+  }
+  return merged
 }
 
 // ---------------------------------------------------------------------------
@@ -163,6 +174,7 @@ async function stageCutDetect(project: Project, ctx: JobContext): Promise<void> 
       padMs: 0,
       origin: 'pipeline' as const,
       status: 'proposed' as const,
+      kind: 'retake' as const,
       note: r.reason
     }))
   }
@@ -183,15 +195,19 @@ async function stageCutDetect(project: Project, ctx: JobContext): Promise<void> 
 async function stageCutReview(project: Project, ctx: JobContext): Promise<void> {
   if (!project.transcript) throw new Error('No transcript. Run stage 1 first.')
   ctx.progress(0.1, 'AI reviewing cut list…')
-  const proposed = project.edl.cuts.filter((c) => c.status === 'proposed')
+  // The reviewer judges cuts as SILENCE removals ("does this clip speech?").
+  // Retake cuts intentionally remove speech — sending them through that lens
+  // would get them rejected and resurrect the repeated takes. They were
+  // already validated by the retake detector, so they pass through directly.
+  const proposed = project.edl.cuts.filter((c) => c.status === 'proposed' && c.kind !== 'retake')
   if (proposed.length > 0) {
     const reviewed = await reviewCuts(proposed, project.transcript, ctx.signal)
     const reviewedIds = new Set(reviewed.map((c) => c.id))
     project.edl.cuts = [...project.edl.cuts.filter((c) => !reviewedIds.has(c.id)), ...reviewed]
   }
-  // Manual cuts are trusted as validated.
+  // Manual cuts are trusted; retake cuts were validated by their own detector.
   project.edl.cuts = project.edl.cuts.map((c) =>
-    c.origin === 'manual' && c.status === 'proposed' ? { ...c, status: 'validated' } : c
+    c.status === 'proposed' && (c.origin === 'manual' || c.kind === 'retake') ? { ...c, status: 'validated' } : c
   )
   project.edl.version++
   save(project)
