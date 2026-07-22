@@ -29,9 +29,24 @@ import { exportFinal } from './media/render'
 import { buildAssFile } from './media/captions'
 import { generateShorts, refreshShorts } from './shorts/opusclip'
 import { checkForUpdates, installUpdate } from './updater'
+import { getLogText, appendRendererLog, log } from './log'
 import { EXPORT_PRESETS } from '@shared/types'
 
 export function registerIpc(): void {
+  // Single-point instrumentation: every handler registered below gets its
+  // rejections logged with the channel name (the renderer often swallows
+  // these into a generic UI message; the session log keeps the real cause).
+  const rawHandle = ipcMain.handle.bind(ipcMain)
+  ;(ipcMain as { handle: typeof ipcMain.handle }).handle = (channel, fn) =>
+    rawHandle(channel, async (e, ...args) => {
+      try {
+        return await fn(e, ...args)
+      } catch (err: any) {
+        log.error('ipc', `${channel} rejected: ${err?.message ?? err}`)
+        throw err
+      }
+    })
+
   // -- Projects ------------------------------------------------------------
   ipcMain.handle(IPC.pickSourceFile, async () => {
     const res = await dialog.showOpenDialog({
@@ -244,4 +259,20 @@ export function registerIpc(): void {
   // -- Updates ------------------------------------------------------------------
   ipcMain.handle(IPC.updateCheck, () => checkForUpdates())
   ipcMain.handle(IPC.updateInstall, () => installUpdate())
+
+  // -- Logs -----------------------------------------------------------------
+  ipcMain.handle(IPC.logsGet, () => {
+    const s = getSettingsStore().getSettings()
+    return getLogText({
+      projectsDir: s.projectsDir ?? '(default)',
+      keysPresent: s.keysPresent, // booleans only — never key material
+      routing: s.routing.taskProviders,
+      silence: s.silence,
+      scene: s.scene,
+      nvencPref: s.export.preferNvenc
+    })
+  })
+  ipcMain.on(IPC.logsAppend, (_e, level: 'debug' | 'info' | 'warn' | 'error', message: string) => {
+    appendRendererLog(level, String(message).slice(0, 4000))
+  })
 }

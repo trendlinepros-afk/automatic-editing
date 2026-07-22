@@ -5,6 +5,7 @@
  */
 import { EventEmitter } from 'events'
 import { newId } from '@shared/id'
+import { log } from './log'
 import type { JobKind, RenderJob } from '@shared/types'
 
 export interface JobContext {
@@ -35,6 +36,7 @@ class RenderQueue extends EventEmitter {
       run
     }
     this.jobs.set(job.id, job)
+    log.info('queue', `queued ${job.id} [${kind}] "${label}" project=${projectId}`)
     this.emitJob(job)
     this.pump()
     return this.publicJob(job)
@@ -43,6 +45,7 @@ class RenderQueue extends EventEmitter {
   cancel(jobId: string): void {
     const job = this.jobs.get(jobId)
     if (!job) return
+    log.warn('queue', `cancel requested for ${jobId} ("${job.label}", ${job.status})`)
     if (job.status === 'queued') {
       job.status = 'canceled'
       this.emitJob(job)
@@ -62,6 +65,8 @@ class RenderQueue extends EventEmitter {
     this.running++
     next.status = 'running'
     next.progress = 0
+    const startedAt = Date.now()
+    log.info('queue', `running ${next.id} "${next.label}"`)
     this.emitJob(next)
     try {
       let lastEmit = 0
@@ -81,12 +86,15 @@ class RenderQueue extends EventEmitter {
       })
       next.status = next.controller.signal.aborted ? 'canceled' : 'done'
       next.progress = 1
+      log.info('queue', `${next.status} ${next.id} "${next.label}" in ${((Date.now() - startedAt) / 1000).toFixed(1)}s`)
     } catch (err: any) {
       if (next.controller.signal.aborted) {
         next.status = 'canceled'
+        log.warn('queue', `canceled ${next.id} "${next.label}" after ${((Date.now() - startedAt) / 1000).toFixed(1)}s`)
       } else {
         next.status = 'error'
         next.error = err?.message ?? String(err)
+        log.error('queue', `error ${next.id} "${next.label}" after ${((Date.now() - startedAt) / 1000).toFixed(1)}s: ${next.error}`)
       }
     } finally {
       this.running--

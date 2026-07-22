@@ -12,6 +12,7 @@
  *  - Concurrent clicks share one in-flight check instead of double-checking.
  */
 import { app } from 'electron'
+import { log } from './log'
 import type { UpdateCheckResult } from '@shared/types'
 
 let updaterReady = false
@@ -45,9 +46,14 @@ async function getUpdater() {
 export function checkForUpdates(): Promise<UpdateCheckResult> {
   // Share one in-flight check across the Settings button and the Help menu.
   if (inFlight) return inFlight
-  inFlight = doCheck().finally(() => {
-    inFlight = null
-  })
+  inFlight = doCheck()
+    .then((r) => {
+      log.info('updater', `check result: ${r.status} (current v${r.currentVersion}${r.latestVersion ? `, latest v${r.latestVersion}` : ''})`)
+      return r
+    })
+    .finally(() => {
+      inFlight = null
+    })
   return inFlight
 }
 

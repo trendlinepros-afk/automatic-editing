@@ -10,6 +10,7 @@ import path from 'path'
 import { runFFmpeg } from '../media/ffmpeg'
 import { apiError } from '../net'
 import { getSettingsStore } from '../settings'
+import { log } from '../log'
 import { newId } from '@shared/id'
 import type { Transcript, TranscriptSegment } from '@shared/types'
 
@@ -28,7 +29,11 @@ export async function transcribe(
   onProgress?: (f: number) => void
 ): Promise<Transcript> {
   const key = getSettingsStore().getSecret('openai')
-  if (!key) return mockTranscript(durationSec)
+  if (!key) {
+    log.warn('whisper', 'no OpenAI key — returning MOCK transcript (retakes/gap-cuts will be inert)')
+    return mockTranscript(durationSec)
+  }
+  log.info('whisper', `transcribing ${sourcePath} (${(durationSec / 60).toFixed(1)} min)`)
 
   // Extract mono 16k audio — smaller upload, same accuracy.
   const audioPath = path.join(workDir, 'transcribe-audio.mp3')
@@ -47,14 +52,20 @@ export async function transcribe(
   form.append('timestamp_granularities[]', 'word')
 
   onProgress?.(0.35)
+  log.info('whisper', `uploading ${(buf.length / 1024 / 1024).toFixed(1)} MB audio to OpenAI`)
+  const t0 = Date.now()
   const res = await fetch('https://api.openai.com/v1/audio/transcriptions', {
     method: 'POST',
     signal,
     headers: { Authorization: `Bearer ${key}` },
     body: form
   })
-  if (!res.ok) throw await apiError('OpenAI Whisper', res)
+  if (!res.ok) {
+    log.error('whisper', `API responded ${res.status} after ${((Date.now() - t0) / 1000).toFixed(1)}s`)
+    throw await apiError('OpenAI Whisper', res)
+  }
   const json: any = await res.json()
+  log.info('whisper', `ok in ${((Date.now() - t0) / 1000).toFixed(1)}s — ${json.segments?.length ?? 0} segments, ${json.words?.length ?? 0} words, lang=${json.language}`)
   onProgress?.(0.95)
 
   const words: { word: string; start: number; end: number }[] = json.words ?? []

@@ -11,6 +11,11 @@ import { getSettingsStore } from './settings'
 import { openProjectWorkDirs } from './project'
 import { migrateLegacyUserData } from './migrate'
 import { buildAppMenu } from './menu'
+import { captureConsole, log } from './log'
+
+// Start the session flight recorder before ANYTHING else runs, so every
+// console line, crash, and subsystem event from t=0 lands in "Copy logs".
+captureConsole()
 
 // Pin the userData directory name so it can NEVER move again if the product's
 // display name changes (as it did in the WickedCut → Zirtola rebrand). All
@@ -148,6 +153,7 @@ if (!gotLock) {
       }
     })
 
+    log.info('app', `Zirtola v${app.getVersion()} starting (packaged=${app.isPackaged}, userData=${app.getPath('userData')})`)
     // Recover settings orphaned by the rebrand (no-op once set up here).
     migrateLegacyUserData()
     initDb()
@@ -155,6 +161,7 @@ if (!gotLock) {
     registerIpc()
     createWindow()
     buildAppMenu()
+    log.info('app', 'main window created, menu built — ready')
 
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) createWindow()

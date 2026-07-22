@@ -7,6 +7,7 @@ import type { AITask, AIProviderId } from '@shared/types'
 import { AnthropicProvider, GeminiProvider, makeDeepSeekProvider, makeOpenAIProvider, type AIProvider, type AIRequest } from './provider'
 import { MockProvider } from './mock'
 import { getSettingsStore } from '../settings'
+import { log } from '../log'
 
 const mock = new MockProvider()
 
@@ -38,14 +39,27 @@ export function providerForTask(task: AITask): AIProvider {
 /** Run a task with one automatic retry on malformed-output errors. */
 export async function runTask(task: AITask, req: AIRequest, signal?: AbortSignal): Promise<string> {
   const provider = providerForTask(task)
+  const t0 = Date.now()
+  log.info('ai', `task=${task} provider=${provider.id} start (system ${req.system.length} chars, user ${req.user.length} chars, maxTokens ${req.maxTokens ?? 4096})`)
   try {
-    return await provider.complete(req, signal)
-  } catch (err) {
+    const out = await provider.complete(req, signal)
+    log.info('ai', `task=${task} provider=${provider.id} ok in ${((Date.now() - t0) / 1000).toFixed(1)}s (${out.length} chars)`)
+    return out
+  } catch (err: any) {
     if (signal?.aborted) throw err
+    log.warn('ai', `task=${task} provider=${provider.id} attempt 1 failed after ${((Date.now() - t0) / 1000).toFixed(1)}s: ${err?.message ?? err} — retrying once`)
     // One retry — transient failures and malformed responses are common.
-    return await provider.complete(
-      { ...req, user: req.user + '\n\nIMPORTANT: Respond with STRICT valid JSON only. No prose, no code fences.' },
-      signal
-    )
+    const t1 = Date.now()
+    try {
+      const out = await provider.complete(
+        { ...req, user: req.user + '\n\nIMPORTANT: Respond with STRICT valid JSON only. No prose, no code fences.' },
+        signal
+      )
+      log.info('ai', `task=${task} provider=${provider.id} retry ok in ${((Date.now() - t1) / 1000).toFixed(1)}s (${out.length} chars)`)
+      return out
+    } catch (err2: any) {
+      log.error('ai', `task=${task} provider=${provider.id} retry failed after ${((Date.now() - t1) / 1000).toFixed(1)}s: ${err2?.message ?? err2}`)
+      throw err2
+    }
   }
 }

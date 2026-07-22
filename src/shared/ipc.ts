@@ -77,6 +77,10 @@ export const IPC = {
   updateCheck: 'update:check',
   updateInstall: 'update:install',
 
+  // Logs
+  logsGet: 'logs:get',
+  logsAppend: 'logs:append',
+
   // Renderer-bound events
   projectEvent: 'project:event',
   menuCheckUpdates: 'menu:check-updates',
@@ -160,6 +164,12 @@ export interface ZirtolaApi {
   // Updates
   checkForUpdates(): Promise<UpdateCheckResult>
   installUpdate(): Promise<void>
+
+  // Logs
+  /** The full session log (since app start) as pasteable text. */
+  getLogs(): Promise<string>
+  /** Forward a renderer-side event into the session log (fire-and-forget). */
+  logEvent(level: 'debug' | 'info' | 'warn' | 'error', message: string): void
 
   // Push events
   onProjectEvent(cb: (project: Project) => void): () => void

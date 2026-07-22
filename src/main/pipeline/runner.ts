@@ -34,6 +34,7 @@ import { buildAssFile } from '../media/captions'
 import { transcribe, estimateCost } from '../transcription/whisper'
 import { reviewCuts, planGraphics } from '../ai/tasks'
 import { findRetakesDeterministic, findRetakesAI, mergeRemovals } from '../ai/retakes'
+import { log, fmt } from '../log'
 import { renderGraphic } from '../graphics/hyperframes'
 import { getSettingsStore } from '../settings'
 
@@ -189,6 +190,16 @@ async function stageCutDetect(project: Project, ctx: JobContext): Promise<void> 
   const kept = project.edl.cuts.filter((c) => c.origin === 'manual' || c.origin === 'ai-revision')
   project.edl.cuts = [...kept, ...proposed]
   project.edl.version++
+  const cutSecs = proposed.reduce((a, c) => a + c.end - c.start, 0)
+  log.info(
+    'stage1',
+    `gapCuts=${gapCuts.length} retakeCuts=${retakeCuts.length} → refined=${proposed.length} ` +
+      `(+${kept.length} user cuts) removing ${cutSecs.toFixed(1)}s of ${source.durationSec.toFixed(1)}s ` +
+      `(minGap=${cfg.minSilenceSec}s pad=${cfg.keepPadMs}ms)`
+  )
+  if (retakeCuts.length > 0) {
+    log.info('stage1', `retake removals: ${fmt(retakeCuts.map((c) => `[${c.start.toFixed(1)}-${c.end.toFixed(1)}] ${c.note}`))}`)
+  }
   ctx.progress(1, `${project.edl.cuts.length} cuts proposed${retakeCuts.length ? ` (${retakeCuts.length} retake cuts)` : ''}`)
 }
 
@@ -284,6 +295,12 @@ async function stageTransitions(project: Project, ctx: JobContext): Promise<void
     }))
   ]
   project.edl.version++
+  log.info(
+    'stage3',
+    `scene changes detected=${detected.length}, suppressed near cut joins=${detected.length - realChanges.length}, ` +
+      `clip boundaries=${clipChangesTrimmed.length}, placed after spacing=${placed.length} ` +
+      `at trimmed [${placed.map((p) => p.toFixed(1)).join(', ')}] (threshold=${cfg.threshold})`
+  )
   save(project)
 
   ctx.progress(0.5, `Baking ${project.edl.transitions.length} transitions…`)
@@ -440,6 +457,7 @@ const STAGE_LABELS: Record<StageId, string> = {
 }
 
 export async function runStages(project: Project, stages: StageId[]): Promise<void> {
+  log.info('pipeline', `run stages [${stages.join(', ')}] for project ${project.id} "${project.name}"`)
   for (const id of stages) {
     const state = project.stages[id]
     state.status = 'running'
@@ -457,11 +475,13 @@ export async function runStages(project: Project, stages: StageId[]): Promise<vo
         state.finishedAt = new Date().toISOString()
         markStale(project, id)
       }
+      log.info('pipeline', `stage ${id} → ${state.status}`)
       save(project)
       if (paused) return // graphics approval gate — stop the run here
     } catch (err: any) {
       state.status = 'error'
       state.error = err?.message ?? String(err)
+      log.error('pipeline', `stage ${id} FAILED: ${state.error}`)
       save(project)
       throw err
     }

@@ -22,11 +22,35 @@ export default function App() {
     const offProject = window.zirtola.onProjectEvent(applyProjectPush)
     const offMenu = window.zirtola.onMenuCheckUpdates(() => setShowUpdate(true))
     const offCmd = window.zirtola.onMenuCommand((p) => handleMenuCommand(p, setFlash))
+
+    // Forward renderer-side problems into the session log ("Copy logs").
+    window.zirtola.logEvent('info', 'renderer booted')
+    const onErr = (e: ErrorEvent) =>
+      window.zirtola.logEvent('error', `window.onerror: ${e.message} @ ${e.filename}:${e.lineno}:${e.colno}`)
+    const onRej = (e: PromiseRejectionEvent) =>
+      window.zirtola.logEvent('error', `unhandledrejection: ${(e.reason as any)?.message ?? String(e.reason)}`)
+    window.addEventListener('error', onErr)
+    window.addEventListener('unhandledrejection', onRej)
+    const origWarn = console.warn.bind(console)
+    const origError = console.error.bind(console)
+    console.warn = (...a: unknown[]) => {
+      try { window.zirtola.logEvent('warn', a.map(String).join(' ')) } catch { /* never break the app */ }
+      origWarn(...a)
+    }
+    console.error = (...a: unknown[]) => {
+      try { window.zirtola.logEvent('error', a.map(String).join(' ')) } catch { /* never break the app */ }
+      origError(...a)
+    }
+
     return () => {
       offQueue()
       offProject()
       offMenu()
       offCmd()
+      window.removeEventListener('error', onErr)
+      window.removeEventListener('unhandledrejection', onRej)
+      console.warn = origWarn
+      console.error = origError
     }
   }, [])
 
@@ -95,6 +119,7 @@ export default function App() {
           </span>
         )}
         <div className="flex-1" />
+        <CopyLogsButton />
         <nav className="flex gap-1">
           {project && (
             <button className={navCls(view === 'media')} onClick={() => setView('media')}>
@@ -199,4 +224,39 @@ async function handleMenuCommand(
 
 function navCls(active: boolean): string {
   return `px-3 py-1 rounded text-sm ${active ? 'bg-ink-700 text-signal' : 'text-ink-400 hover:text-ink-200'}`
+}
+
+/** Grab the entire session log (main + renderer, since launch) → clipboard. */
+function CopyLogsButton() {
+  const [state, setState] = useState<'idle' | 'busy' | 'done' | 'fail'>('idle')
+  async function copy() {
+    setState('busy')
+    try {
+      const text = await window.zirtola.getLogs()
+      try {
+        await navigator.clipboard.writeText(text)
+      } catch {
+        const ta = document.createElement('textarea')
+        ta.value = text
+        document.body.appendChild(ta)
+        ta.select()
+        document.execCommand('copy')
+        ta.remove()
+      }
+      setState('done')
+    } catch {
+      setState('fail')
+    }
+    window.setTimeout(() => setState('idle'), 1800)
+  }
+  return (
+    <button
+      className="px-3 py-1 rounded text-sm text-ink-400 hover:text-ink-200 border border-ink-700"
+      onClick={copy}
+      disabled={state === 'busy'}
+      title="Copy the full session log (everything since the app started) for a bug report"
+    >
+      {state === 'done' ? '✓ Copied' : state === 'fail' ? 'Copy failed' : state === 'busy' ? 'Copying…' : '⧉ Copy logs'}
+    </button>
+  )
 }

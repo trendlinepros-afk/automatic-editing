@@ -61,6 +61,9 @@ const api: ZirtolaApi = {
   checkForUpdates: () => ipcRenderer.invoke(IPC.updateCheck),
   installUpdate: () => ipcRenderer.invoke(IPC.updateInstall),
 
+  getLogs: () => ipcRenderer.invoke(IPC.logsGet),
+  logEvent: (level, message) => ipcRenderer.send(IPC.logsAppend, level, message),
+
   onProjectEvent: (cb) => {
     const listener = (_e: unknown, project: Project) => cb(project)
     ipcRenderer.on(IPC.projectEvent, listener)

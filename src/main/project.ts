@@ -10,6 +10,7 @@ import { probe } from './media/ffmpeg'
 import { getSettingsStore } from './settings'
 import { projectsRoot } from './storage'
 import { buildMediaItems, pruneMediaById } from './mediapool'
+import { log } from './log'
 import { saveProjectRow, getProjectRow, listProjectRows, deleteProjectRow } from './db'
 import { renderQueue } from './queue'
 import { STAGE_ORDER, type EDL, type MediaItem, type Project, type ProjectSummary, type StageId, type StageState } from '@shared/types'
@@ -102,6 +103,7 @@ export async function createProject(name: string, sourcePath?: string): Promise<
   }
   live.set(id, project)
   saveProject(project)
+  log.info('project', `created ${id} "${project.name}" workDir=${workDir}${sourcePath ? ` source=${sourcePath}` : ' (no source yet)'}`)
   return project
 }
 
@@ -111,6 +113,7 @@ export function addProjectMedia(id: string, paths: string[]): Project {
   const existing = project.media ?? []
   const seen = new Set(existing.map((m) => m.path))
   const additions = buildMediaItems(paths).filter((m) => !seen.has(m.path))
+  log.info('project', `media import into ${id}: ${paths.length} path(s) → ${additions.length} new item(s)`)
   if (additions.length === 0) {
     // Nothing new (dupes, or no videos found) — surface it if the pool is empty.
     if (existing.length === 0) throw new Error('No video files were found in that selection.')
@@ -184,6 +187,7 @@ export async function setProjectSource(id: string, sourcePath: string, opts?: { 
   project.previewPath = undefined
   project.finalPath = undefined
   saveProject(project)
+  log.info('project', `source set on ${id}: ${sourcePath} (${project.source.durationSec.toFixed(1)}s) — pipeline reset`)
   return project
 }
 
