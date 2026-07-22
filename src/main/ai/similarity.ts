@@ -51,3 +51,23 @@ export function prefixSimilarity(a: string[], b: string[]): number {
   }
   return best
 }
+
+/**
+ * 0..1 — similarity of the two sequences' shared ENDING. Catches re-records
+ * where only the intro phrase changed: "But now you guys know I'm a sucker for
+ * scale things" vs "I mean I'm a sucker for scale things" — retakes rephrase
+ * the lead-in but land on the same line. Suffix alignment is deliberately
+ * strict against false positives: two sentences that merely share a mid-phrase
+ * ("…drove it into the sandbox hard" vs "…drove it into the sandbox again")
+ * have different endings and score low. The matched suffix must be ≥5 tokens
+ * AND cover ≥70% of the shorter line.
+ */
+export function coreSimilarity(a: string[], b: string[]): number {
+  const shorter = Math.min(a.length, b.length)
+  let best = 0
+  for (let L = 5; L <= shorter; L++) {
+    if (L / shorter < 0.7) continue
+    best = Math.max(best, tokenSimilarity(a.slice(a.length - L), b.slice(b.length - L)))
+  }
+  return best
+}

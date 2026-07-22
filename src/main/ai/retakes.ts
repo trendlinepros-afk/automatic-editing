@@ -13,7 +13,7 @@
  */
 import { runTask, taskProviderLabel } from './router'
 import { extractJson, isObject } from './json'
-import { normalizeTokens, prefixSimilarity, tokenSimilarity } from './similarity'
+import { coreSimilarity, normalizeTokens, prefixSimilarity, tokenSimilarity } from './similarity'
 import type { TimeRegion, Transcript, TranscriptSegment } from '@shared/types'
 
 export interface RetakeRemoval extends TimeRegion {
@@ -27,10 +27,15 @@ function segmentSpan(seg: TranscriptSegment): TimeRegion {
   return { start: Math.max(0, first - 0.05), end: last + 0.05 }
 }
 
-const LOOKAHEAD_SEGMENTS = 10
-const LOOKAHEAD_SECONDS = 90
+// Purely TIME-bounded lookahead. An earlier version also capped the scan at 10
+// segments ahead, which silently shrank the window exactly when it mattered
+// most: a re-recorded BLOCK inserts many short retake segments between an
+// early line and its final take (seen in the field: a duplicate 75s and ~15
+// segments apart escaped). Comparisons are cheap; time is the only bound.
+const LOOKAHEAD_SECONDS = 120
 const DUPLICATE_SIM = 0.8
 const PREFIX_SIM = 0.85
+const CORE_SIM = 0.88 // stricter — core matching ignores lead-ins on both sides
 const MAX_SEGMENT_SEC = 25 // never auto-remove very long segments
 
 /** Layer 1 — deterministic repeated-take detection. Keeps the LAST take. */
@@ -44,16 +49,23 @@ export function findRetakesDeterministic(transcript: Transcript): RetakeRemoval[
     if (ti.length < 3) continue // too short to match reliably ("Yeah." repeats naturally)
     if (segs[i].end - segs[i].start > MAX_SEGMENT_SEC) continue
 
-    for (let j = i + 1; j < segs.length && j <= i + LOOKAHEAD_SEGMENTS; j++) {
+    for (let j = i + 1; j < segs.length; j++) {
       if (segs[j].start - segs[i].end > LOOKAHEAD_SECONDS) break
       const tj = tokens[j]
       if (tj.length === 0) continue
       const dup = tokenSimilarity(ti, tj) >= DUPLICATE_SIM
       const falseStart = tj.length > ti.length && prefixSimilarity(ti, tj) >= PREFIX_SIM
-      if (dup || falseStart) {
+      // Reworded lead-in ("But now you guys know I'm a sucker…" re-taken as
+      // "I mean I'm a sucker…"): compare the shared core, both lead-ins ignored.
+      const rewordedLeadIn = coreSimilarity(ti, tj) >= CORE_SIM
+      if (dup || falseStart || rewordedLeadIn) {
         removals.push({
           ...segmentSpan(segs[i]),
-          reason: dup ? `Repeated take — re-recorded at ${segs[j].start.toFixed(1)}s` : 'False start — line restarted and extended'
+          reason: dup
+            ? `Repeated take — re-recorded at ${segs[j].start.toFixed(1)}s`
+            : falseStart
+              ? 'False start — line restarted and extended'
+              : `Repeated take (reworded lead-in) — re-recorded at ${segs[j].start.toFixed(1)}s`
         })
         break // i is gone; whether j itself repeats is decided when i === j
       }
@@ -108,11 +120,24 @@ export async function findRetakesAI(transcript: Transcript, signal?: AbortSignal
     // truncated one would let betterTake=5.5 validate removal 5 against itself.
     const removedTokens = normalizeTokens(segs.slice(from, to + 1).map((s) => s.text).join(' '))
     const bt = typeof r.betterTake === 'number' ? Math.trunc(r.betterTake) : NaN
-    const better = Number.isInteger(bt) && bt > to && bt < segs.length ? segs[bt] : undefined
-    const betterTokens = better ? normalizeTokens(better.text) : null
+    // A removed BLOCK re-records as a block: compare against the same NUMBER
+    // of segments starting at the kept take, not one segment — a 4-line block
+    // vs a single line always failed similarity and vetoed valid removals.
+    const blockLen = to - from
+    const betterTokens =
+      Number.isInteger(bt) && bt > to && bt < segs.length
+        ? normalizeTokens(
+            segs
+              .slice(bt, Math.min(bt + blockLen + 1, segs.length))
+              .map((s) => s.text)
+              .join(' ')
+          )
+        : null
     const resembles =
       betterTokens !== null &&
-      (tokenSimilarity(removedTokens, betterTokens) >= 0.45 || prefixSimilarity(removedTokens, betterTokens) >= 0.6)
+      (tokenSimilarity(removedTokens, betterTokens) >= 0.45 ||
+        prefixSimilarity(removedTokens, betterTokens) >= 0.6 ||
+        coreSimilarity(removedTokens, betterTokens) >= 0.8)
     const shortFalseStart = removedTokens.length <= 8
     if (!resembles && !shortFalseStart) continue
 
