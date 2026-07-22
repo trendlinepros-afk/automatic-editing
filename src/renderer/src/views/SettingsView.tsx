@@ -149,11 +149,21 @@ function ApiKeys() {
   )
 }
 
+const DEFAULT_MODELS: Record<'gemini' | 'openai' | 'deepseek' | 'anthropic', string> = {
+  gemini: 'gemini-3.6-flash',
+  openai: 'gpt-5.6',
+  deepseek: 'deepseek-chat',
+  anthropic: 'claude-opus-4-8'
+}
+
 function Routing() {
   const { settings, saveSettings } = useStore()
   if (!settings) return null
   return (
-    <Section title="AI routing" hint="Per-task provider. Default is Gemini. Transcription is pinned to OpenAI Whisper and is not routable. A task whose provider has no key runs in mock mode.">
+    <Section
+      title="AI routing"
+      hint="Each task defaults to the provider that's strongest for it (judgment → Claude, structured parsing → OpenAI, fast copy → Gemini). If a provider has no key, the next-best provider WITH a key takes over automatically — mock only runs when no keys exist at all. Transcription is pinned to OpenAI Whisper."
+    >
       {TASKS.map((t) => (
         <Row key={t.id} label={t.label}>
           <select
@@ -170,12 +180,35 @@ function Routing() {
             {PROVIDERS.map((p) => (
               <option key={p} value={p}>
                 {p}
-                {!settings.keysPresent[p as 'gemini' | 'openai' | 'deepseek' | 'anthropic'] ? ' (no key → mock)' : ''}
+                {!settings.keysPresent[p as keyof typeof DEFAULT_MODELS] ? ' (no key → auto-fallback)' : ''}
               </option>
             ))}
           </select>
         </Row>
       ))}
+
+      <div className="pt-2 border-t border-ink-700">
+        <p className="text-xs text-ink-500 mb-2">
+          Model per provider — leave blank for the recommended default. Change only if you know a newer model ID.
+        </p>
+        {(Object.keys(DEFAULT_MODELS) as (keyof typeof DEFAULT_MODELS)[]).map((p) => (
+          <Row key={p} label={p}>
+            <input
+              className="input !w-56 font-mono text-xs"
+              placeholder={DEFAULT_MODELS[p]}
+              defaultValue={settings.routing.providerModels?.[p] ?? ''}
+              onBlur={(e) =>
+                saveSettings({
+                  routing: {
+                    taskProviders: settings.routing.taskProviders,
+                    providerModels: { ...settings.routing.providerModels, [p]: e.target.value.trim() }
+                  }
+                })
+              }
+            />
+          </Row>
+        ))}
+      </div>
     </Section>
   )
 }

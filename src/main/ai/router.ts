@@ -3,7 +3,7 @@
  * override per task in Settings. Falls back to the Mock provider whenever the
  * routed provider has no key, so keyless runs still complete.
  */
-import type { AITask, AIProviderId } from '@shared/types'
+import { BEST_TASK_PROVIDERS, TASK_FALLBACK_CHAINS, type AITask, type AIProviderId } from '@shared/types'
 import { AnthropicProvider, GeminiProvider, makeDeepSeekProvider, makeOpenAIProvider, type AIProvider, type AIRequest } from './provider'
 import { MockProvider } from './mock'
 import { getSettingsStore } from '../settings'
@@ -11,29 +11,45 @@ import { log } from '../log'
 
 const mock = new MockProvider()
 
-const FACTORIES: Record<Exclude<AIProviderId, 'mock'>, (key: string) => AIProvider> = {
-  gemini: (key) => new GeminiProvider(key),
-  openai: makeOpenAIProvider,
-  deepseek: makeDeepSeekProvider,
-  anthropic: (key) => new AnthropicProvider(key)
+const FACTORIES: Record<Exclude<AIProviderId, 'mock'>, (key: string, model?: string) => AIProvider> = {
+  gemini: (key, model) => new GeminiProvider(key, model || undefined),
+  openai: (key, model) => makeOpenAIProvider(key, model || undefined),
+  deepseek: (key, model) => makeDeepSeekProvider(key, model || undefined),
+  anthropic: (key, model) => new AnthropicProvider(key, model || undefined)
 }
 
-/** ONE place that decides real-vs-mock: no key for the routed provider →
- *  mock, and the substitution is logged so silent-mock surprises are
- *  diagnosable ("why did cut review accept everything?"). */
-function buildProvider(id: AIProviderId): AIProvider {
-  if (id === 'mock') return mock
-  const key = getSettingsStore().getSecret(id)
-  if (!key) {
-    console.warn(`[ai] no ${id} key configured — falling back to mock provider`)
-    return mock
-  }
-  return FACTORIES[id](key)
-}
-
+/**
+ * ONE place that resolves the provider for a task:
+ *  1. The routed provider, when its key exists (honoring any model override).
+ *  2. Otherwise the task's fallback chain — the next-best REAL provider with a
+ *     key takes over (logged), so a missing key never silently disables AI.
+ *  3. Mock only when NO real provider has a key.
+ */
 export function providerForTask(task: AITask): AIProvider {
-  const routing = getSettingsStore().getSettings().routing
-  return buildProvider(routing.taskProviders[task] ?? 'gemini')
+  const settings = getSettingsStore().getSettings()
+  const store = getSettingsStore()
+  const models = settings.routing.providerModels ?? {}
+  const routed = settings.routing.taskProviders[task] ?? BEST_TASK_PROVIDERS[task]
+
+  const tryBuild = (id: AIProviderId): AIProvider | null => {
+    if (id === 'mock') return mock
+    const key = store.getSecret(id)
+    return key ? FACTORIES[id](key, models[id]) : null
+  }
+
+  const primary = tryBuild(routed)
+  if (primary) return primary
+
+  for (const id of TASK_FALLBACK_CHAINS[task]) {
+    if (id === routed) continue
+    const p = tryBuild(id)
+    if (p) {
+      log.warn('ai', `task=${task}: no ${routed} key — falling back to ${id}`)
+      return p
+    }
+  }
+  log.warn('ai', `task=${task}: no provider keys at all — using MOCK (results are canned)`)
+  return mock
 }
 
 /** Run a task with one automatic retry on malformed-output errors. */

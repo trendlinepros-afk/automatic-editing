@@ -8,7 +8,7 @@
 import { app, safeStorage } from 'electron'
 import fs from 'fs'
 import path from 'path'
-import type { AppSettings, BrandKit } from '@shared/types'
+import { BEST_TASK_PROVIDERS, type AppSettings, type BrandKit } from '@shared/types'
 
 export type SecretName = 'gemini' | 'openai' | 'deepseek' | 'anthropic' | 'opusclip' | 's3-access' | 's3-secret'
 
@@ -29,13 +29,9 @@ const DEFAULTS: AppSettings = {
   onboarded: false,
   keysPresent: { gemini: false, openai: false, deepseek: false, anthropic: false, opusclip: false },
   routing: {
-    taskProviders: {
-      'retake-detection': 'gemini',
-      'cut-review': 'gemini',
-      'graphic-planning': 'gemini',
-      'graphic-slot-filling': 'gemini',
-      'revision-parsing': 'gemini'
-    }
+    // Best provider per task (fallback chains cover missing keys).
+    taskProviders: { ...BEST_TASK_PROVIDERS },
+    providerModels: {}
   },
   silence: { thresholdDb: -35, minSilenceSec: 0.6, keepPadMs: 150 },
   scene: { threshold: 0.4, defaultTransition: 'crossfade', defaultDurationSec: 0.5 },
@@ -63,10 +59,22 @@ class SettingsStore {
   private load(): AppSettings {
     try {
       const raw = JSON.parse(fs.readFileSync(this.settingsPath, 'utf-8'))
+      const savedProviders = raw?.routing?.taskProviders ?? {}
+      // MIGRATION: the pre-smart-routing default was "gemini for everything".
+      // A saved config that still matches that fingerprint was never a user
+      // choice — upgrade it to the best-per-task defaults. Any config where
+      // the user picked at least one non-gemini provider is left untouched.
+      const values = Object.values(savedProviders)
+      const isOldDefault = values.length > 0 && values.every((v) => v === 'gemini')
       return {
         ...DEFAULTS,
         ...raw,
-        routing: { taskProviders: { ...DEFAULTS.routing.taskProviders, ...raw?.routing?.taskProviders } },
+        routing: {
+          taskProviders: isOldDefault
+            ? { ...DEFAULTS.routing.taskProviders }
+            : { ...DEFAULTS.routing.taskProviders, ...savedProviders },
+          providerModels: { ...raw?.routing?.providerModels }
+        },
         brandKit: { ...DEFAULT_BRAND, ...raw?.brandKit, palette: { ...DEFAULT_BRAND.palette, ...raw?.brandKit?.palette } }
       }
     } catch {
@@ -105,7 +113,10 @@ class SettingsStore {
       // Deep-merge nested objects so a partial patch (e.g. only brandKit.logoPath
       // or one task provider) can't clobber sibling fields.
       routing: patch.routing
-        ? { taskProviders: { ...this.settings.routing.taskProviders, ...patch.routing.taskProviders } }
+        ? {
+            taskProviders: { ...this.settings.routing.taskProviders, ...patch.routing.taskProviders },
+            providerModels: { ...this.settings.routing.providerModels, ...patch.routing.providerModels }
+          }
         : this.settings.routing,
       brandKit: patch.brandKit
         ? {

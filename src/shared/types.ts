@@ -322,8 +322,40 @@ export type AITask =
   | 'revision-parsing'
 
 export interface AIRoutingConfig {
-  /** Per-task provider override; default is gemini for everything. */
+  /** Per-task provider choice (see BEST_TASK_PROVIDERS for the defaults). */
   taskProviders: Record<AITask, AIProviderId>
+  /** Optional per-provider model override (e.g. gemini → "gemini-3-pro").
+   *  Empty/absent = the provider's built-in best default. */
+  providerModels?: Partial<Record<Exclude<AIProviderId, 'mock'>, string>>
+}
+
+/**
+ * Best-provider-per-task defaults, chosen by task shape:
+ *  - Editorial judgment (retakes, cut review, graphic planning) → Claude Opus.
+ *  - Structured instruction mapping (revision parsing) → OpenAI flagship
+ *    (native JSON mode + strong instruction following).
+ *  - High-volume trivial copywriting (slot filling) → Gemini fast tier.
+ */
+export const BEST_TASK_PROVIDERS: Record<AITask, AIProviderId> = {
+  'retake-detection': 'anthropic',
+  'cut-review': 'anthropic',
+  'graphic-planning': 'anthropic',
+  'graphic-slot-filling': 'gemini',
+  'revision-parsing': 'openai'
+}
+
+/**
+ * Per-task fallback order when the routed provider has no key: the next-best
+ * REAL provider takes over (logged), and mock is only ever the last resort.
+ * This kills the old silent-mock gotcha where a missing key quietly disabled
+ * the AI.
+ */
+export const TASK_FALLBACK_CHAINS: Record<AITask, Exclude<AIProviderId, 'mock'>[]> = {
+  'retake-detection': ['anthropic', 'openai', 'gemini', 'deepseek'],
+  'cut-review': ['anthropic', 'openai', 'gemini', 'deepseek'],
+  'graphic-planning': ['anthropic', 'gemini', 'openai', 'deepseek'],
+  'graphic-slot-filling': ['gemini', 'openai', 'deepseek', 'anthropic'],
+  'revision-parsing': ['openai', 'anthropic', 'gemini', 'deepseek']
 }
 
 // ---------------------------------------------------------------------------

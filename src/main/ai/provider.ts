@@ -33,9 +33,9 @@ export class GeminiProvider implements AIProvider {
   readonly label = 'Gemini'
   constructor(
     private apiKey: string,
-    // gemini-2.0-flash was retired; 2.5-flash is the current fast model on the
-    // generativelanguage v1beta generateContent endpoint.
-    private model = 'gemini-2.5-flash'
+    // Current GA fast-tier model on generateContent — stronger than 2.5-flash
+    // at a lower price. Overridable per-provider in Settings → Routing.
+    private model = 'gemini-3.6-flash'
   ) {}
 
   async complete(req: AIRequest, signal?: AbortSignal): Promise<string> {
@@ -73,6 +73,9 @@ class OpenAICompatibleProvider implements AIProvider {
   ) {}
 
   async complete(req: AIRequest, signal?: AbortSignal): Promise<string> {
+    // GPT-5-era and o-series reasoning models take max_completion_tokens and
+    // reject a custom temperature; classic models still use max_tokens.
+    const reasoningEra = /^(gpt-5|o\d)/.test(this.model)
     const res = await fetch(`${this.baseUrl}/chat/completions`, {
       method: 'POST',
       signal,
@@ -82,8 +85,9 @@ class OpenAICompatibleProvider implements AIProvider {
       },
       body: JSON.stringify({
         model: this.model,
-        temperature: req.temperature ?? 0.2,
-        max_tokens: req.maxTokens ?? 4096,
+        ...(reasoningEra
+          ? { max_completion_tokens: req.maxTokens ?? 4096 }
+          : { temperature: req.temperature ?? 0.2, max_tokens: req.maxTokens ?? 4096 }),
         ...(req.jsonSchemaHint ? { response_format: { type: 'json_object' } } : {}),
         messages: [
           { role: 'system', content: req.system },
@@ -99,12 +103,12 @@ class OpenAICompatibleProvider implements AIProvider {
   }
 }
 
-export function makeOpenAIProvider(apiKey: string): AIProvider {
-  return new OpenAICompatibleProvider('openai', 'OpenAI', 'https://api.openai.com/v1', apiKey, 'gpt-4o-mini')
+export function makeOpenAIProvider(apiKey: string, model = 'gpt-5.6'): AIProvider {
+  return new OpenAICompatibleProvider('openai', 'OpenAI', 'https://api.openai.com/v1', apiKey, model)
 }
 
-export function makeDeepSeekProvider(apiKey: string): AIProvider {
-  return new OpenAICompatibleProvider('deepseek', 'DeepSeek', 'https://api.deepseek.com/v1', apiKey, 'deepseek-chat')
+export function makeDeepSeekProvider(apiKey: string, model = 'deepseek-chat'): AIProvider {
+  return new OpenAICompatibleProvider('deepseek', 'DeepSeek', 'https://api.deepseek.com/v1', apiKey, model)
 }
 
 /**

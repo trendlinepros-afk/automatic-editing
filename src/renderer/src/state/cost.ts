@@ -5,12 +5,12 @@
  * HyperFrames) runs locally and is free. These are ESTIMATES — actual spend
  * varies with content, provider, and how much the model returns.
  */
-import type { AIProviderId, AITask, AppSettings, Project, StageId } from '@shared/types'
+import { TASK_FALLBACK_CHAINS, type AIProviderId, type AITask, type AppSettings, type Project, type StageId } from '@shared/types'
 
-// Approximate $ per 1M tokens for each provider's configured model.
+// Approximate $ per 1M tokens for each provider's default model.
 const RATES: Record<AIProviderId, { in: number; out: number }> = {
-  gemini: { in: 0.3, out: 2.5 }, // gemini-2.5-flash
-  openai: { in: 0.15, out: 0.6 }, // gpt-4o-mini
+  gemini: { in: 0.3, out: 2.5 }, // gemini-3.6-flash
+  openai: { in: 1.25, out: 10.0 }, // gpt-5.6 flagship (approx.)
   deepseek: { in: 0.28, out: 1.1 }, // deepseek-chat
   anthropic: { in: 5.0, out: 25.0 }, // claude-opus-4-8
   mock: { in: 0, out: 0 }
@@ -30,10 +30,15 @@ function transcriptTokens(project: Project): number {
 }
 
 function providerFor(settings: AppSettings, task: AITask): AIProviderId {
+  // Mirrors the main-process router: routed provider if keyed, else the
+  // task's fallback chain, else mock (free).
   const routed = settings.routing.taskProviders[task] ?? 'gemini'
-  // No key for the routed provider → the app falls back to mock (free).
   if (routed === 'mock') return 'mock'
-  return settings.keysPresent[routed] ? routed : 'mock'
+  if (settings.keysPresent[routed]) return routed
+  for (const id of TASK_FALLBACK_CHAINS[task]) {
+    if (settings.keysPresent[id]) return id
+  }
+  return 'mock'
 }
 
 function aiTaskCost(project: Project, settings: AppSettings, task: AITask): number {
