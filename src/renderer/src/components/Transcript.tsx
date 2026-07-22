@@ -5,15 +5,58 @@
  * source. Segments are memoized: during playback only the segment under the
  * playhead re-renders, not the whole (possibly hour-long) transcript.
  */
-import { memo, useCallback, useMemo } from 'react'
+import { memo, useCallback, useMemo, useState } from 'react'
 import { useStore, formatTime } from '../state/store'
 import { cutsToKeepSegments, sourceToTrimmedTime, trimmedToSourceTime } from '@shared/timemap'
+import { newId } from '@shared/id'
 import type { TimeRegion, TranscriptSegment } from '@shared/types'
 
 export default function Transcript() {
   const project = useStore((s) => s.project)
   const currentTime = useStore((s) => s.currentTime)
   const selection = useStore((s) => s.selection)
+  const [deleting, setDeleting] = useState(false)
+
+  /** Manually cut the checked lines out of the video: adds word-precise
+   *  manual cuts (trusted — no AI re-review) and re-renders stages 2–6. */
+  async function deleteSelected() {
+    const s = useStore.getState()
+    const proj = s.project
+    if (!proj?.transcript || s.selection.segmentIds.length === 0) return
+    const ids = new Set(s.selection.segmentIds)
+    const segs = proj.transcript.segments.filter((x) => ids.has(x.id))
+    if (segs.length === 0) return
+    if (
+      !confirm(
+        `Delete ${segs.length} line(s) from the video? The lines stay visible (struck through) in the transcript, and the edit re-renders now.`
+      )
+    ) {
+      return
+    }
+    setDeleting(true)
+    try {
+      await s.mutateEdl((edl) => {
+        for (const seg of segs) {
+          edl.cuts.push({
+            id: newId('cut'),
+            start: Math.max(0, (seg.words[0]?.start ?? seg.start) - 0.05),
+            end: (seg.words[seg.words.length - 1]?.end ?? seg.end) + 0.05,
+            padMs: 0,
+            origin: 'manual',
+            status: 'validated',
+            kind: 'retake',
+            note: 'Deleted from transcript'
+          })
+        }
+        return edl
+      })
+      s.clearSelection()
+      // Re-apply cuts and everything downstream (no graphics re-plan).
+      window.zirtola.runStage(proj.id, 'cut-review')
+    } finally {
+      setDeleting(false)
+    }
+  }
 
   const keep = useMemo(
     () =>
@@ -61,13 +104,25 @@ export default function Transcript() {
 
   return (
     <div className="panel flex-1 min-h-0 overflow-y-auto p-3 leading-relaxed select-text">
-      <div className="flex items-center justify-between mb-2 text-xs text-ink-400 sticky top-0 bg-ink-900 pb-1">
+      <div className="flex items-center justify-between gap-2 mb-2 text-xs text-ink-400 sticky top-0 bg-ink-900 pb-1">
         <span className="font-display font-semibold text-ink-200">Transcript</span>
-        <span>
-          {selection.segmentIds.length > 0
-            ? `${selection.segmentIds.length} segment(s) selected for revision`
-            : 'Click a word to seek · check segments to target a revision'}
-          {project.transcript.source === 'mock' && <span className="ml-2 text-warn">mock transcript (no OpenAI key)</span>}
+        <span className="flex items-center gap-2 min-w-0">
+          <span className="truncate">
+            {selection.segmentIds.length > 0
+              ? `${selection.segmentIds.length} line(s) selected`
+              : 'Click a word to seek · check lines to delete or target a revision'}
+            {project.transcript.source === 'mock' && <span className="ml-2 text-warn">mock transcript (no OpenAI key)</span>}
+          </span>
+          {selection.segmentIds.length > 0 && (
+            <button
+              className="btn btn-danger text-xs shrink-0 !py-0.5"
+              disabled={deleting}
+              onClick={deleteSelected}
+              title="Cut the selected lines out of the video (undoable with Ctrl+Z)"
+            >
+              {deleting ? 'Deleting…' : `🗑 Delete ${selection.segmentIds.length} line(s)`}
+            </button>
+          )}
         </span>
       </div>
 
