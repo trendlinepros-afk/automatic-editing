@@ -4,12 +4,12 @@ import { estimatePipelineCost, formatUsd } from '../state/cost'
 import { STAGE_ORDER, type StageId } from '@shared/types'
 
 const STAGE_META: Record<StageId, { n: number; label: string; desc: string }> = {
-  'cut-detect': { n: 1, label: 'Cut dead space', desc: 'Silence detection → proposed cuts' },
-  'cut-review': { n: 2, label: 'Review cuts', desc: 'AI validates against transcript, then applies' },
-  transitions: { n: 3, label: 'Transitions', desc: 'Major scene changes only' },
-  graphics: { n: 4, label: 'Graphics', desc: 'AI plan → your approval → HyperFrames' },
+  'cut-detect': { n: 1, label: 'Cut dead space', desc: 'Transcribe → cut silence, retakes, repeats' },
+  'cut-review': { n: 2, label: 'Cut review', desc: 'AI validates → renders the cut → YOU approve it' },
+  transitions: { n: 3, label: 'Transitions', desc: 'After cut approval · major scene changes only' },
+  graphics: { n: 4, label: 'Graphics', desc: 'AI plan → your approval → render' },
   audio: { n: 5, label: 'Sound & music', desc: 'SFX + music with auto-ducking' },
-  preview: { n: 6, label: 'Preview', desc: 'Low-res render for review' }
+  preview: { n: 6, label: 'Preview', desc: 'Final review render' }
 }
 
 export default function StageRail() {
@@ -65,6 +65,33 @@ export default function StageRail() {
             </button>
             <button className="btn text-xs" onClick={() => setConfirming(false)}>
               Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
+      {project.stages['cut-review'].status === 'awaiting-approval' && (
+        <div className="panel bg-warn/10 border border-warn/50 p-3 text-xs space-y-2">
+          <p className="text-ink-200">
+            <b>Your review:</b> the cut is loaded in the preview player. Watch it, delete transcript lines or drag cut
+            edges, re-render — repeat until it's right. Nothing continues until you approve.
+          </p>
+          <div className="flex flex-col gap-2">
+            <button
+              className="btn text-xs"
+              disabled={anyRunning}
+              onClick={() => window.zirtola.runStage(project.id, 'cut-review')}
+              title="Apply your transcript/cut changes and render the cut again"
+            >
+              ↻ Re-render cut with my changes
+            </button>
+            <button
+              className="btn btn-primary text-xs"
+              disabled={anyRunning}
+              onClick={() => window.zirtola.approveCuts(project.id)}
+              title="Lock this cut and continue: transitions → graphics → sound → preview"
+            >
+              ✓ Cut approved — continue pipeline
             </button>
           </div>
         </div>

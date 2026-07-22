@@ -18,7 +18,9 @@ export default function Transcript() {
   const [deleting, setDeleting] = useState(false)
 
   /** Manually cut the checked lines out of the video: adds word-precise
-   *  manual cuts (trusted — no AI re-review) and re-renders stages 2–6. */
+   *  manual cuts (trusted — no AI re-review). NO automation beyond that —
+   *  the human clicks "Re-render cut" in the pipeline rail when ready, so
+   *  several deletions batch into one render. */
   async function deleteSelected() {
     const s = useStore.getState()
     const proj = s.project
@@ -26,13 +28,6 @@ export default function Transcript() {
     const ids = new Set(s.selection.segmentIds)
     const segs = proj.transcript.segments.filter((x) => ids.has(x.id))
     if (segs.length === 0) return
-    if (
-      !confirm(
-        `Delete ${segs.length} line(s) from the video? The lines stay visible (struck through) in the transcript, and the edit re-renders now.`
-      )
-    ) {
-      return
-    }
     setDeleting(true)
     try {
       await s.mutateEdl((edl) => {
@@ -51,8 +46,6 @@ export default function Transcript() {
         return edl
       })
       s.clearSelection()
-      // Re-apply cuts and everything downstream (no graphics re-plan).
-      window.zirtola.runStage(proj.id, 'cut-review')
     } finally {
       setDeleting(false)
     }
@@ -118,7 +111,7 @@ export default function Transcript() {
               className="btn btn-danger text-xs shrink-0 !py-0.5"
               disabled={deleting}
               onClick={deleteSelected}
-              title="Cut the selected lines out of the video (undoable with Ctrl+Z)"
+              title="Cut the selected lines out of the video (undoable with Ctrl+Z). Click 'Re-render cut' in the Pipeline rail to apply."
             >
               {deleting ? 'Deleting…' : `🗑 Delete ${selection.segmentIds.length} line(s)`}
             </button>

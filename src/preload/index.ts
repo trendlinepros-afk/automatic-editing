@@ -30,6 +30,7 @@ const api: ZirtolaApi = {
   runPipeline: (projectId) => ipcRenderer.invoke(IPC.pipelineRun, projectId),
   runStage: (projectId, stage, region) => ipcRenderer.invoke(IPC.pipelineRunStage, projectId, stage, region),
   approveGraphics: (projectId, ids, edits) => ipcRenderer.invoke(IPC.pipelineApproveGraphics, projectId, ids, edits),
+  approveCuts: (projectId) => ipcRenderer.invoke(IPC.pipelineApproveCuts, projectId),
   estimateTranscription: (projectId) => ipcRenderer.invoke(IPC.transcriptEstimate, projectId),
 
   updateEdl: (projectId, edl) => ipcRenderer.invoke(IPC.edlUpdate, projectId, edl),

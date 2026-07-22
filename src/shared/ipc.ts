@@ -45,6 +45,7 @@ export const IPC = {
   pipelineRun: 'pipeline:run',
   pipelineRunStage: 'pipeline:run-stage',
   pipelineApproveGraphics: 'pipeline:approve-graphics',
+  pipelineApproveCuts: 'pipeline:approve-cuts',
   transcriptEstimate: 'pipeline:transcript-estimate',
 
   // EDL / edits
@@ -127,6 +128,8 @@ export interface ZirtolaApi {
   runPipeline(projectId: string): Promise<void>
   runStage(projectId: string, stage: StageId, region?: TimeRegion): Promise<void>
   approveGraphics(projectId: string, approvedIds: string[], edits: GraphicEvent[]): Promise<void>
+  /** Human sign-off on the stage-2 cut — resumes transitions → graphics → audio → preview. */
+  approveCuts(projectId: string): Promise<void>
   estimateTranscription(projectId: string): Promise<{ minutes: number; estUsd: number }>
 
   // Edits

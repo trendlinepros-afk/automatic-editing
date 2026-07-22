@@ -22,7 +22,8 @@ import {
   renderKeep,
   latestArtifact,
   markStaleForEdlChange,
-  startAutoEdit
+  startAutoEdit,
+  approveCutsAndContinue
 } from './pipeline/runner'
 import { submitRevision } from './pipeline/revisions'
 import { exportFinal } from './media/render'
@@ -136,6 +137,11 @@ export function registerIpc(): void {
   ipcMain.handle(IPC.pipelineApproveGraphics, async (_e, projectId: string, approvedIds: string[], edits: GraphicEvent[]) => {
     const project = projects.openProject(projectId)
     approveGraphicsAndRender(project, approvedIds, edits).catch((err) => console.error('[graphics]', err))
+  })
+
+  ipcMain.handle(IPC.pipelineApproveCuts, async (_e, projectId: string) => {
+    const project = projects.openProject(projectId)
+    approveCutsAndContinue(project).catch((err) => console.error('[approve-cuts]', err))
   })
 
   ipcMain.handle(IPC.transcriptEstimate, (_e, projectId: string) => transcriptEstimate(projects.openProject(projectId)))

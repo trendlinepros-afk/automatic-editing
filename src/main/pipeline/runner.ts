@@ -203,7 +203,7 @@ async function stageCutDetect(project: Project, ctx: JobContext): Promise<void> 
   ctx.progress(1, `${project.edl.cuts.length} cuts proposed${retakeCuts.length ? ` (${retakeCuts.length} retake cuts)` : ''}`)
 }
 
-async function stageCutReview(project: Project, ctx: JobContext): Promise<void> {
+async function stageCutReview(project: Project, ctx: JobContext): Promise<void | 'paused'> {
   if (!project.transcript) throw new Error('No transcript. Run stage 1 first.')
   ctx.progress(0.1, 'AI reviewing cut list…')
   // The reviewer judges cuts as SILENCE removals ("does this clip speech?").
@@ -232,6 +232,13 @@ async function stageCutReview(project: Project, ctx: JobContext): Promise<void> 
   // Snapshot the keep-segments that define the trimmed timeline the preview
   // will play — the renderer maps playhead/transcript times through this.
   project.trimKeep = keep
+
+  // HUMAN GATE: load the cut into the preview player and PAUSE the pipeline.
+  // The human reviews the cut, edits the transcript/cuts and re-renders as
+  // needed, and only their explicit "cut approved" continues to transitions.
+  project.previewPath = outPath
+  ctx.progress(1, 'Cut rendered — awaiting your review')
+  return 'paused'
 }
 
 async function stageTransitions(project: Project, ctx: JobContext): Promise<void> {
@@ -581,6 +588,9 @@ export async function runSingleStage(project: Project, stage: StageId, _region?:
       }
     } else {
       await runStages(project, [id])
+      // A stage that paused for human approval (cut review, graphics plan)
+      // stops the cascade — downstream resumes via its approve action.
+      if (project.stages[id].status === 'awaiting-approval') return
     }
   }
 }
@@ -588,6 +598,23 @@ export async function runSingleStage(project: Project, stage: StageId, _region?:
 /** Explicit re-plan of stage 4 (stage-rail button / fresh runs) — gated. */
 export async function replanGraphics(project: Project): Promise<void> {
   await runStages(project, ['graphics'])
+}
+
+/**
+ * Human "cut approved" action for the stage-2 gate: marks the reviewed cut as
+ * done and lets the rest of the pipeline (transitions → graphics → audio →
+ * preview) proceed. Nothing downstream of stage 2 runs without this click.
+ */
+export async function approveCutsAndContinue(project: Project): Promise<void> {
+  const state = project.stages['cut-review']
+  if (state.status !== 'awaiting-approval') {
+    throw new Error('The cut is not waiting for approval right now.')
+  }
+  state.status = 'done'
+  state.finishedAt = new Date().toISOString()
+  log.info('pipeline', `cut approved by user for project ${project.id} — continuing to transitions`)
+  save(project)
+  await runStages(project, ['transitions', 'graphics', 'audio', 'preview'])
 }
 
 export function transcriptEstimate(project: Project): { minutes: number; estUsd: number } {
