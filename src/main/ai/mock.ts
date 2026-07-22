@@ -8,6 +8,7 @@ import type { AIProvider, AIRequest } from './provider'
 export class MockProvider implements AIProvider {
   readonly id = 'mock'
   readonly label = 'Mock (no API key)'
+  readonly model = 'canned-responses'
 
   async complete(req: AIRequest): Promise<string> {
     await new Promise((r) => setTimeout(r, 300)) // feel like a network call

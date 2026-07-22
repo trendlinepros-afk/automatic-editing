@@ -33,7 +33,7 @@ export async function transcribe(
     log.warn('whisper', 'no OpenAI key — returning MOCK transcript (retakes/gap-cuts will be inert)')
     return mockTranscript(durationSec)
   }
-  log.info('whisper', `transcribing ${sourcePath} (${(durationSec / 60).toFixed(1)} min)`)
+  log.info('whisper', `transcribing ${sourcePath} (${(durationSec / 60).toFixed(1)} min) via openai/whisper-1`)
 
   // Extract mono 16k audio — smaller upload, same accuracy.
   const audioPath = path.join(workDir, 'transcribe-audio.mp3')
@@ -61,8 +61,8 @@ export async function transcribe(
     body: form
   })
   if (!res.ok) {
-    log.error('whisper', `API responded ${res.status} after ${((Date.now() - t0) / 1000).toFixed(1)}s`)
-    throw await apiError('OpenAI Whisper', res)
+    log.error('whisper', `openai/whisper-1 responded ${res.status} after ${((Date.now() - t0) / 1000).toFixed(1)}s`)
+    throw await apiError('OpenAI Whisper (whisper-1)', res)
   }
   const json: any = await res.json()
   log.info('whisper', `ok in ${((Date.now() - t0) / 1000).toFixed(1)}s — ${json.segments?.length ?? 0} segments, ${json.words?.length ?? 0} words, lang=${json.language}`)

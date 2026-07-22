@@ -3,7 +3,7 @@
  * filling (stage 4), and revision-instruction parsing (review loop).
  * Each builds a strict-JSON prompt, calls the router, and safely parses.
  */
-import { runTask } from './router'
+import { runTask, taskProviderLabel } from './router'
 import { extractJson, isObject } from './json'
 import { newId } from '@shared/id'
 import type {
@@ -61,7 +61,7 @@ export async function reviewCuts(
     signal
   )
 
-  const parsed = extractJson(raw, (v): v is { decisions: CutDecision[] } => isObject(v) && Array.isArray((v as any).decisions))
+  const parsed = extractJson(raw, (v): v is { decisions: CutDecision[] } => isObject(v) && Array.isArray((v as any).decisions), `cut-review via ${taskProviderLabel('cut-review')}`)
 
   const byId = new Map(parsed.decisions.map((d) => [d.cutId, d]))
   return cuts.map((c) => {
@@ -108,7 +108,7 @@ export async function planGraphics(transcript: Transcript, signal?: AbortSignal)
     signal
   )
 
-  const parsed = extractJson(raw, (v): v is { graphics: any[] } => isObject(v) && Array.isArray((v as any).graphics))
+  const parsed = extractJson(raw, (v): v is { graphics: any[] } => isObject(v) && Array.isArray((v as any).graphics), `graphic-planning via ${taskProviderLabel('graphic-planning')}`)
   const validTemplates = new Set(Object.keys(TEMPLATE_LIBRARY))
 
   return parsed.graphics
@@ -149,7 +149,7 @@ export async function fillSlots(
     },
     signal
   )
-  const parsed = extractJson(raw, (v): v is { slots: Record<string, string> } => isObject(v) && isObject((v as any).slots))
+  const parsed = extractJson(raw, (v): v is { slots: Record<string, string> } => isObject(v) && isObject((v as any).slots), `graphic-slot-filling via ${taskProviderLabel('graphic-slot-filling')}`)
   return Object.fromEntries(Object.entries(parsed.slots).map(([k, v]) => [k, String(v)]))
 }
 
@@ -207,6 +207,7 @@ export async function parseRevision(
   return extractJson(
     raw,
     (v): v is ParsedRevision =>
-      isObject(v) && typeof (v as any).stage === 'string' && isObject((v as any).action) && typeof (v as any).action.kind === 'string'
+      isObject(v) && typeof (v as any).stage === 'string' && isObject((v as any).action) && typeof (v as any).action.kind === 'string',
+    `revision-parsing via ${taskProviderLabel('revision-parsing')}`
   )
 }

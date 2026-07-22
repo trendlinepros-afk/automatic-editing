@@ -52,18 +52,25 @@ export function providerForTask(task: AITask): AIProvider {
   return mock
 }
 
+/** "provider/model" label for a task — for error attribution at parse sites. */
+export function taskProviderLabel(task: AITask): string {
+  const p = providerForTask(task)
+  return `${p.id}/${p.model}`
+}
+
 /** Run a task with one automatic retry on malformed-output errors. */
 export async function runTask(task: AITask, req: AIRequest, signal?: AbortSignal): Promise<string> {
   const provider = providerForTask(task)
+  const who = `${provider.id}/${provider.model}`
   const t0 = Date.now()
-  log.info('ai', `task=${task} provider=${provider.id} start (system ${req.system.length} chars, user ${req.user.length} chars, maxTokens ${req.maxTokens ?? 4096})`)
+  log.info('ai', `task=${task} ${who} start (system ${req.system.length} chars, user ${req.user.length} chars, maxTokens ${req.maxTokens ?? 4096})`)
   try {
     const out = await provider.complete(req, signal)
-    log.info('ai', `task=${task} provider=${provider.id} ok in ${((Date.now() - t0) / 1000).toFixed(1)}s (${out.length} chars)`)
+    log.info('ai', `task=${task} ${who} ok in ${((Date.now() - t0) / 1000).toFixed(1)}s (${out.length} chars)`)
     return out
   } catch (err: any) {
     if (signal?.aborted) throw err
-    log.warn('ai', `task=${task} provider=${provider.id} attempt 1 failed after ${((Date.now() - t0) / 1000).toFixed(1)}s: ${err?.message ?? err} — retrying once`)
+    log.warn('ai', `task=${task} ${who} attempt 1 failed after ${((Date.now() - t0) / 1000).toFixed(1)}s: ${err?.message ?? err} — retrying once`)
     // One retry — transient failures and malformed responses are common.
     const t1 = Date.now()
     try {
@@ -71,11 +78,13 @@ export async function runTask(task: AITask, req: AIRequest, signal?: AbortSignal
         { ...req, user: req.user + '\n\nIMPORTANT: Respond with STRICT valid JSON only. No prose, no code fences.' },
         signal
       )
-      log.info('ai', `task=${task} provider=${provider.id} retry ok in ${((Date.now() - t1) / 1000).toFixed(1)}s (${out.length} chars)`)
+      log.info('ai', `task=${task} ${who} retry ok in ${((Date.now() - t1) / 1000).toFixed(1)}s (${out.length} chars)`)
       return out
     } catch (err2: any) {
-      log.error('ai', `task=${task} provider=${provider.id} retry failed after ${((Date.now() - t1) / 1000).toFixed(1)}s: ${err2?.message ?? err2}`)
-      throw err2
+      log.error('ai', `task=${task} ${who} retry failed after ${((Date.now() - t1) / 1000).toFixed(1)}s: ${err2?.message ?? err2}`)
+      // Bake attribution into the error itself — this string reaches the
+      // stage error and "Copy errors", naming the weak link directly.
+      throw new Error(`[${task} via ${who}] ${err2?.message ?? err2}`)
     }
   }
 }

@@ -83,7 +83,7 @@ function completeTruncated(s: string): string | null {
   return head + closers.reverse().join('')
 }
 
-export function extractJson<T>(raw: string, guard: (v: unknown) => v is T): T {
+export function extractJson<T>(raw: string, guard: (v: unknown) => v is T, attribution?: string): T {
   const bases: string[] = []
   const fenced = raw.match(/```(?:json)?\s*([\s\S]*?)```/)
   if (fenced) bases.push(fenced[1])
@@ -111,7 +111,8 @@ export function extractJson<T>(raw: string, guard: (v: unknown) => v is T): T {
     }
   }
   const snippet = raw.length > 1200 ? raw.slice(0, 1200) + `\n…(+${raw.length - 1200} more chars)` : raw
-  throw new Error(`Could not parse model output as valid JSON: ${lastErr?.message ?? 'unknown'}\n--- raw model output ---\n${snippet}`)
+  const who = attribution ? `[${attribution}] ` : ''
+  throw new Error(`${who}Could not parse model output as valid JSON: ${lastErr?.message ?? 'unknown'}\n--- raw model output ---\n${snippet}`)
 }
 
 export const isObject = (v: unknown): v is Record<string, unknown> =>

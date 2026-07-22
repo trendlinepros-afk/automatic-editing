@@ -23,6 +23,9 @@ export interface AIRequest {
 export interface AIProvider {
   readonly id: string
   readonly label: string
+  /** Exact model ID this instance calls — surfaced in logs and error messages
+   *  so a failing stage names its weak link. */
+  readonly model: string
   complete(req: AIRequest, signal?: AbortSignal): Promise<string>
 }
 
@@ -35,7 +38,7 @@ export class GeminiProvider implements AIProvider {
     private apiKey: string,
     // Current GA fast-tier model on generateContent — stronger than 2.5-flash
     // at a lower price. Overridable per-provider in Settings → Routing.
-    private model = 'gemini-3.6-flash'
+    readonly model = 'gemini-3.6-flash'
   ) {}
 
   async complete(req: AIRequest, signal?: AbortSignal): Promise<string> {
@@ -69,7 +72,7 @@ class OpenAICompatibleProvider implements AIProvider {
     readonly label: string,
     private baseUrl: string,
     private apiKey: string,
-    private model: string
+    readonly model: string
   ) {}
 
   async complete(req: AIRequest, signal?: AbortSignal): Promise<string> {
@@ -124,7 +127,7 @@ export class AnthropicProvider implements AIProvider {
 
   constructor(
     apiKey: string,
-    private model = 'claude-opus-4-8'
+    readonly model = 'claude-opus-4-8'
   ) {
     this.client = new Anthropic({ apiKey })
   }

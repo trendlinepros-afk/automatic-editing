@@ -11,7 +11,7 @@
  *
  * Both layers emit word-precise SOURCE-time regions.
  */
-import { runTask } from './router'
+import { runTask, taskProviderLabel } from './router'
 import { extractJson, isObject } from './json'
 import { normalizeTokens, prefixSimilarity, tokenSimilarity } from './similarity'
 import type { TimeRegion, Transcript, TranscriptSegment } from '@shared/types'
@@ -90,7 +90,8 @@ export async function findRetakesAI(transcript: Transcript, signal?: AbortSignal
   const parsed = extractJson(
     raw,
     (v): v is { removals: { from: number; to: number; betterTake?: number; reason?: string }[] } =>
-      isObject(v) && Array.isArray((v as any).removals)
+      isObject(v) && Array.isArray((v as any).removals),
+    `retake-detection via ${taskProviderLabel('retake-detection')}`
   )
 
   const removals: RetakeRemoval[] = []
