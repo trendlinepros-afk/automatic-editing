@@ -79,6 +79,7 @@ export const IPC = {
 
   // Logs
   logsGet: 'logs:get',
+  logsTail: 'logs:tail',
   logsAppend: 'logs:append',
 
   // Renderer-bound events
@@ -168,6 +169,8 @@ export interface ZirtolaApi {
   // Logs
   /** The full session log (since app start) as pasteable text. */
   getLogs(): Promise<string>
+  /** The most recent formatted log lines (for the live logs panel). */
+  getLogTail(maxLines?: number): Promise<string[]>
   /** Forward a renderer-side event into the session log (fire-and-forget). */
   logEvent(level: 'debug' | 'info' | 'warn' | 'error', message: string): void
 

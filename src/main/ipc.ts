@@ -29,7 +29,7 @@ import { exportFinal } from './media/render'
 import { buildAssFile } from './media/captions'
 import { generateShorts, refreshShorts } from './shorts/opusclip'
 import { checkForUpdates, installUpdate } from './updater'
-import { getLogText, appendRendererLog, log } from './log'
+import { getLogText, getLogTail, appendRendererLog, log } from './log'
 import { EXPORT_PRESETS } from '@shared/types'
 
 export function registerIpc(): void {
@@ -272,6 +272,7 @@ export function registerIpc(): void {
       nvencPref: s.export.preferNvenc
     })
   })
+  ipcMain.handle(IPC.logsTail, (_e, maxLines?: number) => getLogTail(Math.min(Math.max(maxLines ?? 200, 10), 1000)))
   ipcMain.on(IPC.logsAppend, (_e, level: 'debug' | 'info' | 'warn' | 'error', message: string) => {
     appendRendererLog(level, String(message).slice(0, 4000))
   })

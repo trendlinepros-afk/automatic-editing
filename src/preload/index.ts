@@ -62,6 +62,7 @@ const api: ZirtolaApi = {
   installUpdate: () => ipcRenderer.invoke(IPC.updateInstall),
 
   getLogs: () => ipcRenderer.invoke(IPC.logsGet),
+  getLogTail: (maxLines) => ipcRenderer.invoke(IPC.logsTail, maxLines),
   logEvent: (level, message) => ipcRenderer.send(IPC.logsAppend, level, message),
 
   onProjectEvent: (cb) => {

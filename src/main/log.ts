@@ -94,6 +94,12 @@ function ts(t: number): string {
   return `${hh}:${mm}:${ss}.${ms} +${rel}s`
 }
 
+/** Most recent formatted log lines, oldest→newest — feeds the in-app live
+ *  logs panel. */
+export function getLogTail(n = 200): string[] {
+  return buffer.slice(-n).map((e) => `${ts(e.t)} ${e.level.toUpperCase().padEnd(5)} [${e.scope}] ${e.msg}`)
+}
+
 /** Full session log as pasteable text, newest last. Header carries the
  *  environment facts needed to reproduce (never secrets). */
 export function getLogText(extraHeader: Record<string, unknown> = {}): string {
