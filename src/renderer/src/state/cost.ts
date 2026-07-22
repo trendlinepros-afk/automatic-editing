@@ -17,7 +17,14 @@ const RATES: Record<AIProviderId, { in: number; out: number }> = {
 }
 
 const WHISPER_USD_PER_MIN = 0.006
-const OUTPUT_TOKENS_EST = 1500 // per AI task, rough
+// Output sizes calibrated from real runs (a 26-min video billed ~$0.37 on
+// Anthropic): retake detection writes a large removals list; cut review a
+// moderate verdict; the rest stay small.
+const OUTPUT_TOKENS_BY_TASK: Partial<Record<AITask, number>> = {
+  'retake-detection': 4500,
+  'cut-review': 2000
+}
+const OUTPUT_TOKENS_DEFAULT = 1200
 const PROMPT_OVERHEAD_TOKENS = 800
 
 function transcriptTokens(project: Project): number {
@@ -44,7 +51,8 @@ function providerFor(settings: AppSettings, task: AITask): AIProviderId {
 function aiTaskCost(project: Project, settings: AppSettings, task: AITask): number {
   const rate = RATES[providerFor(settings, task)]
   const inTok = transcriptTokens(project) + PROMPT_OVERHEAD_TOKENS
-  return (inTok * rate.in + OUTPUT_TOKENS_EST * rate.out) / 1_000_000
+  const outTok = OUTPUT_TOKENS_BY_TASK[task] ?? OUTPUT_TOKENS_DEFAULT
+  return (inTok * rate.in + outTok * rate.out) / 1_000_000
 }
 
 function transcriptionCost(project: Project, settings: AppSettings): number {
